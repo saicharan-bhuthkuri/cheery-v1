@@ -83,6 +83,49 @@ $technicians = [
 
 $matchedTech = $technicians[$service] ?? ['name' => 'Dinesh Verma', 'rating' => 4.9, 'jobs' => 750, 'phone' => '+91 98765-XXXXX'];
 
+// Persist to MySQL database
+try {
+    require_once __DIR__ . '/../includes/db.php';
+    require_once __DIR__ . '/../includes/auth.php';
+    $pdo = getDBConnection();
+    $customerId = null;
+    if (isCustomerLoggedIn()) {
+        $customerId = $_SESSION['customer_id'];
+    } else {
+        $cleanPhone = preg_replace('/[^\d]/', '', $phone);
+        $custStmt = $pdo->prepare("SELECT id FROM customers WHERE mobile = ? LIMIT 1");
+        $custStmt->execute([$cleanPhone]);
+        $cust = $custStmt->fetch();
+        if ($cust) {
+            $customerId = $cust['id'];
+        }
+    }
+
+    $stmt = $pdo->prepare("
+        INSERT INTO bookings 
+        (booking_reference, customer_id, customer_name, phone, service_category, sub_service, city, address, pincode, service_date, time_slot, estimated_price, status, mitra_name, mitra_rating)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Confirmed', ?, ?)
+    ");
+    $stmt->execute([
+        $bookingId,
+        $customerId,
+        $customerName,
+        preg_replace('/[^\d]/', '', $phone),
+        $service,
+        $subService ?: ucwords($service),
+        $city,
+        $address,
+        $pincode ?: null,
+        $date,
+        $timeSlot,
+        $estimatedPrice,
+        $matchedTech['name'],
+        $matchedTech['rating']
+    ]);
+} catch (Exception $e) {
+    error_log("Failed to insert booking into DB: " . $e->getMessage());
+}
+
 echo json_encode([
     'status' => 'success',
     'booking_id' => $bookingId,

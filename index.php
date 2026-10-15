@@ -5,10 +5,14 @@
  */
 
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/data/services.php';
 require_once __DIR__ . '/data/features.php';
 require_once __DIR__ . '/data/testimonials.php';
 require_once __DIR__ . '/data/faqs.php';
+
+$isLoggedIn = isCustomerLoggedIn();
+$customer = $isLoggedIn ? getLoggedInCustomer() : null;
 
 /**
  * Renders a crisp Lucide icon element with fallback inline SVG
@@ -137,10 +141,24 @@ function renderIcon(string $name, int $size = 20): string {
                     <i data-lucide="users" style="width: 14px; height: 14px;"></i>
                     <span>For Partners</span>
                 </button>
-                <button type="button" class="btn btn-primary btn-sm trigger-booking-modal nav-book-btn" data-service-cat="plumbing">
-                    <span class="btn-text-full">Book Instant Mitra</span>
-                    <span class="btn-text-short">Book Now</span>
-                </button>
+                <?php if ($isLoggedIn && $customer): ?>
+                    <a href="dashboard.php" class="btn btn-outline btn-sm nav-user-pill" title="Customer Dashboard" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                        <i data-lucide="user-check" style="width: 15px; height: 15px; color: #10B981;"></i>
+                        <span>Hi, <?= htmlspecialchars(explode(' ', $customer['full_name'])[0]); ?></span>
+                    </a>
+                    <a href="book.php" class="btn btn-primary btn-sm nav-book-btn">
+                        <span class="btn-text-full">Book a Service</span>
+                        <span class="btn-text-short">Book</span>
+                    </a>
+                    <a href="logout.php" class="btn btn-ghost btn-sm" title="Log Out" style="color: var(--text-muted); padding: 0.4rem 0.5rem; display: inline-flex; align-items: center;">
+                        <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                    </a>
+                <?php else: ?>
+                    <a href="login.php?redirect=book.php" class="btn btn-primary btn-sm nav-book-btn" style="text-decoration: none;">
+                        <span class="btn-text-full">Book a Service</span>
+                        <span class="btn-text-short">Book</span>
+                    </a>
+                <?php endif; ?>
                 <a href="tel:<?= APP_PHONE; ?>" class="mobile-call-action-btn" title="Call Mitra Emergency Helpline" aria-label="Call emergency support">
                     <i data-lucide="phone" style="width: 18px; height: 18px;"></i>
                 </a>
@@ -172,6 +190,22 @@ function renderIcon(string $name, int $size = 20): string {
                 </button>
 
                 <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem;">
+                    <?php if ($isLoggedIn && $customer): ?>
+                        <div style="background: #F1F5F9; border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 0.5rem;">
+                            <div style="font-size: 0.75rem; color: #64748B; text-transform: uppercase; font-weight: 700;">Logged in Customer</div>
+                            <div style="font-size: 1.05rem; font-weight: 800; color: #0A1325;"><?= htmlspecialchars($customer['full_name']); ?></div>
+                            <div style="font-size: 0.8rem; color: #10B981; font-weight: 600;">+91 <?= htmlspecialchars($customer['mobile']); ?></div>
+                        </div>
+                        <a href="dashboard.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="layout-dashboard" style="width: 18px; height: 18px; color: #FF6600;"></i>
+                            <span>My Customer Dashboard</span>
+                        </a>
+                        <a href="logout.php" class="mobile-nav-link" style="font-size: 0.95rem; font-weight: 600; color: #EF4444; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                            <span>Sign Out</span>
+                        </a>
+                    <?php endif; ?>
+
                     <a href="#services" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Services Catalog</a>
                     <a href="#trending" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Trending Bookings</a>
                     <a href="#pledge" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Transparent Visiting Fee</a>
@@ -182,10 +216,10 @@ function renderIcon(string $name, int $size = 20): string {
                     <a href="#partnerSection" class="mobile-nav-link trigger-partner-modal" style="font-size: 1.1rem; font-weight: 700; color: #FF5500;">Join as Partner (₹48k/mo)</a>
                 </div>
 
-                <button type="button" class="btn btn-primary btn-full trigger-booking-modal" data-service-cat="plumbing" style="margin-bottom: 0.75rem;">
+                <a href="<?= $isLoggedIn ? 'book.php' : 'login.php?redirect=book.php'; ?>" class="btn btn-primary btn-full" style="margin-bottom: 0.75rem; justify-content: center; text-decoration: none;">
                     <span>Book a Service</span>
-                </button>
-                <a href="tel:<?= APP_PHONE; ?>" class="btn btn-outline btn-full">
+                </a>
+                <a href="tel:<?= APP_PHONE; ?>" class="btn btn-outline btn-full" style="text-decoration: none; justify-content: center;">
                     <i data-lucide="phone" style="width: 16px; height: 16px;"></i>
                     <span>Helpline: <?= APP_PHONE_DISPLAY; ?></span>
                 </a>
@@ -225,10 +259,10 @@ function renderIcon(string $name, int $size = 20): string {
                                     <input type="text" id="headerSearchInput" placeholder="Search 'tap repair', 'AC service'..." autocomplete="off">
                                     <button type="button" id="clearSearchBtn" class="search-clear-btn" style="display: none;">&times;</button>
                                 </div>
-                                <button type="button" class="btn btn-primary btn-sm trigger-booking-modal hero-find-btn" data-service-cat="plumbing">
+                                <a href="<?= $isLoggedIn ? 'book.php?service=plumbing' : 'login.php?redirect=' . urlencode('book.php?service=plumbing'); ?>" class="btn btn-primary btn-sm hero-find-btn" style="text-decoration: none;">
                                     <span class="find-btn-text">Find Mitra</span>
                                     <i data-lucide="arrow-right" style="width: 15px; height: 15px;"></i>
-                                </button>
+                                </a>
                                 <div id="headerSearchDropdown" class="search-dropdown-menu" style="display: none;"></div>
                             </div>
 
@@ -394,7 +428,7 @@ function renderIcon(string $name, int $size = 20): string {
                                     <span class="bento-price-prefix">Starts at</span>
                                     <span class="bento-price">₹499</span>
                                 </div>
-                                <button type="button" class="bento-book-btn trigger-booking-modal" data-service-cat="appliances" data-sub-name="AC Jet Pump Foam Servicing" data-sub-price="499">+ Book</button>
+                                <a href="book.php?service=appliances&sub=<?= urlencode('AC Jet Pump Foam Servicing'); ?>&price=499" class="bento-book-btn">+ Book</a>
                             </div>
                         </div>
                     </div>
@@ -418,7 +452,7 @@ function renderIcon(string $name, int $size = 20): string {
                                     <span class="bento-price-prefix">Starts at</span>
                                     <span class="bento-price">₹199</span>
                                 </div>
-                                <button type="button" class="bento-book-btn trigger-booking-modal" data-service-cat="plumbing" data-sub-name="Tap Repair / Replacement" data-sub-price="199">+ Book</button>
+                                <a href="book.php?service=plumbing&sub=<?= urlencode('Tap Repair / Replacement'); ?>&price=199" class="bento-book-btn">+ Book</a>
                             </div>
                         </div>
                     </div>
@@ -442,7 +476,7 @@ function renderIcon(string $name, int $size = 20): string {
                                     <span class="bento-price-prefix">Starts at</span>
                                     <span class="bento-price">₹399</span>
                                 </div>
-                                <button type="button" class="bento-book-btn trigger-booking-modal" data-service-cat="cleaning" data-sub-name="Intense Bathroom Deep Cleaning" data-sub-price="399">+ Book</button>
+                                <a href="book.php?service=cleaning&sub=<?= urlencode('Intense Bathroom Deep Cleaning'); ?>&price=399" class="bento-book-btn">+ Book</a>
                             </div>
                         </div>
                     </div>
@@ -466,7 +500,7 @@ function renderIcon(string $name, int $size = 20): string {
                                     <span class="bento-price-prefix">Starts at</span>
                                     <span class="bento-price">₹149</span>
                                 </div>
-                                <button type="button" class="bento-book-btn trigger-booking-modal" data-service-cat="electrical" data-sub-name="Switchboard / Socket Repair" data-sub-price="149">+ Book</button>
+                                <a href="book.php?service=electrical&sub=<?= urlencode('Switchboard / Socket Repair'); ?>&price=149" class="bento-book-btn">+ Book</a>
                             </div>
                         </div>
                     </div>
@@ -632,9 +666,9 @@ function renderIcon(string $name, int $size = 20): string {
                                                 </div>
                                                 <div class="rate-card-item-action">
                                                     <span class="rate-card-item-price">₹<?= $sub['price']; ?></span>
-                                                    <button type="button" class="rate-card-book-btn trigger-booking-modal" data-service-cat="<?= htmlspecialchars($service['category']); ?>" data-sub-name="<?= htmlspecialchars($sub['name']); ?>" data-sub-price="<?= htmlspecialchars($sub['price']); ?>">
+                                                    <a href="book.php?service=<?= urlencode($service['category']); ?>&sub=<?= urlencode($sub['name']); ?>&price=<?= urlencode($sub['price']); ?>" class="rate-card-book-btn">
                                                         + Book
-                                                    </button>
+                                                    </a>
                                                 </div>
                                             </div>
                                             <?php endforeach; ?>
@@ -650,10 +684,10 @@ function renderIcon(string $name, int $size = 20): string {
                                     <span class="catalog-price-label">Visiting / Inspection</span>
                                     <span class="catalog-price-value">₹<?= $service['starting_price']; ?></span>
                                 </div>
-                                <button type="button" class="btn btn-primary btn-sm trigger-booking-modal" data-service-cat="<?= htmlspecialchars($service['category']); ?>" data-sub-name="<?= htmlspecialchars($service['sub_services'][0]['name'] ?? $service['title']); ?>" data-sub-price="<?= htmlspecialchars($service['sub_services'][0]['price'] ?? $service['starting_price']); ?>">
+                                <a href="book.php?service=<?= urlencode($service['category']); ?>&sub=<?= urlencode($service['sub_services'][0]['name'] ?? $service['title']); ?>&price=<?= urlencode($service['sub_services'][0]['price'] ?? $service['starting_price']); ?>" class="btn btn-primary btn-sm" style="text-decoration: none;">
                                     <span>Book Service</span>
                                     <i data-lucide="arrow-right" style="width: 14px; height: 14px;"></i>
-                                </button>
+                                </a>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -1050,183 +1084,7 @@ function renderIcon(string $name, int $size = 20): string {
         </div>
     </div>
 
-    <!-- =======================================================================
-         INTERACTIVE MULTI-STEP BOOKING MODAL
-         ======================================================================= -->
-    <div id="bookingModalOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Book a Service">
-        <div class="modal-container">
-            <div class="modal-header">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <i data-lucide="calendar" style="color: var(--brand-coral); width: 20px; height: 20px;"></i>
-                    <h3 class="modal-title">Book a Verified Mitra</h3>
-                </div>
-                <button id="closeBookingModalBtn" class="modal-close-btn" aria-label="Close modal">&times;</button>
-            </div>
 
-            <div class="modal-body">
-                <!-- Stepper Progress Nodes -->
-                <div class="booking-stepper">
-                    <div class="stepper-node active" id="stepperNode1">
-                        <div class="stepper-circle">1</div>
-                        <span class="stepper-label">Service</span>
-                    </div>
-                    <div class="stepper-node" id="stepperNode2">
-                        <div class="stepper-circle">2</div>
-                        <span class="stepper-label">Schedule</span>
-                    </div>
-                    <div class="stepper-node" id="stepperNode3">
-                        <div class="stepper-circle">3</div>
-                        <span class="stepper-label">Confirm</span>
-                    </div>
-                </div>
-
-                <!-- STEP 1: Service Selection -->
-                <div class="modal-step-panel active" id="modalStep1">
-                    <div class="form-field-group">
-                        <label for="bookServiceSelect" class="field-label">Service Category</label>
-                        <select id="bookServiceSelect" class="select-control">
-                            <?php foreach ($SERVICES_DATA as $s): ?>
-                                <option value="<?= htmlspecialchars($s['category']); ?>"><?= htmlspecialchars($s['title']); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="form-field-group">
-                        <label for="bookSubServiceSelect" class="field-label">Specific Repair / Job Required</label>
-                        <select id="bookSubServiceSelect" class="select-control">
-                            <!-- Populated dynamically via JS -->
-                        </select>
-                    </div>
-
-                    <div style="background: var(--brand-coral-soft); border: 1px solid var(--brand-coral-border); border-radius: 12px; padding: 1rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between;">
-                        <div>
-                            <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700; display: block;">Transparent Standard Fee</span>
-                            <strong style="font-size: 1.35rem; color: var(--brand-navy);" id="modalPriceValue">₹199</strong>
-                        </div>
-                        <span style="font-size: 0.8rem; font-weight: 700; color: #10B981; background: #FFFFFF; padding: 0.35rem 0.75rem; border-radius: var(--radius-full);">Zero Advance</span>
-                    </div>
-
-                    <button type="button" id="btnNextToStep2" class="btn btn-primary btn-full">
-                        <span>Continue to Schedule</span>
-                        <i data-lucide="arrow-right" style="width: 16px; height: 16px;"></i>
-                    </button>
-                </div>
-
-                <!-- STEP 2: Date, Slot & Address -->
-                <div class="modal-step-panel" id="modalStep2">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div class="form-field-group">
-                            <label for="bookDateInput" class="field-label">Preferred Date</label>
-                            <input type="date" id="bookDateInput" class="form-control" required>
-                        </div>
-                        <div class="form-field-group">
-                            <label for="bookTimeSelect" class="field-label">Time Slot</label>
-                            <select id="bookTimeSelect" class="select-control">
-                                <option value="⚡ Express (within 30 mins)">⚡ Express (within 30 mins)</option>
-                                <option value="09:00 AM - 11:00 AM">09:00 AM - 11:00 AM</option>
-                                <option value="11:00 AM - 01:00 PM">11:00 AM - 01:00 PM</option>
-                                <option value="02:00 PM - 04:00 PM">02:00 PM - 04:00 PM</option>
-                                <option value="04:00 PM - 06:00 PM">04:00 PM - 06:00 PM</option>
-                                <option value="06:00 PM - 08:00 PM">06:00 PM - 08:00 PM</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div class="form-field-group">
-                        <label for="bookCitySelect" class="field-label">City</label>
-                        <select id="bookCitySelect" class="select-control">
-                            <?php foreach ($AVAILABLE_CITIES as $city): ?>
-                                <option value="<?= htmlspecialchars($city); ?>"><?= htmlspecialchars($city); ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-
-                    <div class="form-field-group">
-                        <label for="bookAddressInput" class="field-label">Complete Street Address / Apartment</label>
-                        <input type="text" id="bookAddressInput" class="form-control" placeholder="e.g. Flat 402, Building B, Green Valley" required>
-                    </div>
-
-                    <div style="display: flex; gap: 0.75rem;">
-                        <button type="button" id="btnBackToStep1" class="btn btn-outline" style="flex: 1;">Back</button>
-                        <button type="button" id="btnNextToStep3" class="btn btn-primary" style="flex: 2;">Review &amp; Proceed</button>
-                    </div>
-                </div>
-
-                <!-- STEP 3: Customer Details & Confirm -->
-                <div class="modal-step-panel" id="modalStep3">
-                    <div style="background: var(--bg-surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 1rem; margin-bottom: 1.25rem; font-size: 0.875rem;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
-                            <span style="color: var(--text-muted);">Selected Service:</span>
-                            <strong id="reviewServiceSummary" style="color: var(--brand-navy);">-</strong>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
-                            <span style="color: var(--text-muted);">Time Slot:</span>
-                            <strong id="reviewScheduleSummary" style="color: var(--brand-navy);">-</strong>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
-                            <span style="color: var(--text-muted);">Location:</span>
-                            <span id="reviewLocationSummary">-</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--border-light); padding-top: 0.5rem; margin-top: 0.5rem;">
-                            <strong>Pay After Service:</strong>
-                            <strong id="reviewTotalEstimate" style="color: var(--accent-emerald); font-size: 1.1rem;">-</strong>
-                        </div>
-                    </div>
-
-                    <div class="form-field-group">
-                        <label for="bookCustomerName" class="field-label">Full Name</label>
-                        <input type="text" id="bookCustomerName" class="form-control" placeholder="e.g. Amit Sharma" required>
-                    </div>
-
-                    <div class="form-field-group">
-                        <label for="bookCustomerPhone" class="field-label">10-Digit Mobile Number</label>
-                        <input type="tel" id="bookCustomerPhone" class="form-control" placeholder="e.g. 9876543210" maxlength="10" required>
-                    </div>
-
-                    <div style="display: flex; gap: 0.75rem;">
-                        <button type="button" id="btnBackToStep2" class="btn btn-outline" style="flex: 1;">Back</button>
-                        <button type="button" id="btnSubmitBooking" class="btn btn-primary" style="flex: 2;">Confirm Booking</button>
-                    </div>
-                </div>
-
-                <!-- STEP 4: Confirmation Screen -->
-                <div class="modal-step-panel" id="modalStep4" style="text-align: center; padding: 1.5rem 0;">
-                    <div style="width: 60px; height: 60px; border-radius: 50%; background: #ECFDF5; color: #10B981; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
-                        <i data-lucide="check" style="width: 32px; height: 32px;"></i>
-                    </div>
-                    <h4 style="font-size: 1.35rem; color: var(--brand-navy); margin-bottom: 0.35rem;">Mitra Dispatched!</h4>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">Your technician has been assigned and is on the way.</p>
-
-                    <div style="display: inline-block; background: var(--brand-coral-soft); color: var(--brand-coral); border: 1.5px dashed var(--brand-coral-border); padding: 0.45rem 1rem; border-radius: 10px; font-weight: 700; margin-bottom: 1.5rem;">
-                        Booking ID: <span id="confBookingId">-</span>
-                    </div>
-
-                    <div style="background: var(--bg-surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 1.25rem; text-align: left; margin-bottom: 1.5rem; font-size: 0.875rem;">
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem;">
-                            <span style="color: var(--text-muted);">Assigned Mitra:</span>
-                            <strong id="confMitraName" style="color: var(--brand-navy);">-</strong>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem;">
-                            <span style="color: var(--text-muted);">Rating:</span>
-                            <span id="confMitraRating">-</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; margin-bottom: 0.4rem;">
-                            <span style="color: var(--text-muted);">Estimated Arrival:</span>
-                            <span id="confSlot" style="font-weight: 600; color: #10B981;">-</span>
-                        </div>
-                        <div style="display: flex; justify-content: space-between; border-top: 1px dashed var(--border-light); padding-top: 0.5rem; margin-top: 0.5rem;">
-                            <span>Pay After Completion:</span>
-                            <strong id="confAmount" style="color: #10B981;">-</strong>
-                        </div>
-                    </div>
-
-                    <button type="button" id="btnBookingDone" class="btn btn-dark btn-full">
-                        Done &amp; Back to Home
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- =======================================================================
          PARTNER REGISTRATION MODAL
@@ -1342,16 +1200,22 @@ function renderIcon(string $name, int $size = 20): string {
             <i data-lucide="layout-grid"></i>
             <span>Services</span>
         </a>
-        <button type="button" class="app-tab app-tab-highlight trigger-booking-modal" data-service-cat="plumbing" data-tab="book" id="tabBook" aria-label="Book a Service">
+        <a href="<?= $isLoggedIn ? 'book.php' : 'login.php?redirect=book.php'; ?>" class="app-tab app-tab-highlight" data-tab="book" id="tabBook" aria-label="Book a Service">
             <div class="tab-highlight-circle">
                 <i data-lucide="calendar-plus"></i>
             </div>
             <span>Book</span>
-        </button>
+        </a>
         <button type="button" class="app-tab trigger-partner-modal" data-tab="partner" id="tabPartner" aria-label="Register as Partner">
-            <i data-lucide="user-check"></i>
+            <i data-lucide="users"></i>
             <span>Partner</span>
         </button>
+        <?php if ($isLoggedIn): ?>
+            <a href="dashboard.php" class="app-tab" data-tab="account" id="tabAccount" aria-label="My Account">
+                <i data-lucide="user"></i>
+                <span>Account</span>
+            </a>
+        <?php endif; ?>
     </nav>
 
     <!-- Global Data & Scripts -->

@@ -1055,6 +1055,10 @@ button, input, select, textarea {
     font-size: 0.825rem;
     font-weight: 700;
     cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.15s ease;
 }
 .bento-book-btn:hover {
@@ -1527,6 +1531,10 @@ button, input, select, textarea {
     font-size: 0.72rem;
     font-weight: 700;
     cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     transition: all 0.15s ease;
 }
 .rate-card-book-btn:hover {
