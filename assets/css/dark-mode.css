@@ -1,0 +1,81 @@
+/**
+ * KaamMitra - Dark Mode Palette & Overrides
+ */
+
+[data-theme="dark"] {
+    --bg-main: #0B1120;
+    --bg-surface: #131D33;
+    --bg-surface-alt: #1E293B;
+    --bg-subtle: #0F172A;
+
+    --border-light: #25334D;
+    --border-focus: #60A5FA;
+
+    --text-heading: #F8FAFC;
+    --text-body: #CBD5E1;
+    --text-muted: #94A3B8;
+    --text-light: #64748B;
+    --text-inverse: #0B1120;
+
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+
+    --grad-hero: radial-gradient(circle at top right, rgba(37, 99, 235, 0.15) 0%, transparent 60%),
+                 radial-gradient(circle at bottom left, rgba(245, 158, 11, 0.08) 0%, transparent 50%);
+    --grad-card: linear-gradient(180deg, rgba(30, 41, 59, 0.7) 0%, rgba(19, 29, 51, 0.95) 100%);
+}
+
+[data-theme="dark"] .glass-nav {
+    background: rgba(11, 17, 32, 0.85) !important;
+    border-bottom-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+[data-theme="dark"] .quick-search-box,
+[data-theme="dark"] .service-card,
+[data-theme="dark"] .feature-card,
+[data-theme="dark"] .calculator-card,
+[data-theme="dark"] .testimonial-card,
+[data-theme="dark"] .faq-item,
+[data-theme="dark"] .modal-container {
+    background: var(--bg-surface);
+    border-color: var(--border-light);
+}
+
+[data-theme="dark"] .step-card {
+    background: var(--bg-surface);
+}
+
+[data-theme="dark"] .form-control,
+[data-theme="dark"] .select-control {
+    background-color: var(--bg-surface-alt);
+    border-color: var(--border-light);
+    color: var(--text-heading);
+}
+
+[data-theme="dark"] .form-control:focus,
+[data-theme="dark"] .select-control:focus {
+    background-color: var(--bg-surface-alt);
+    border-color: var(--border-focus);
+}
+
+[data-theme="dark"] .footer {
+    background: #060913;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .badge-soft-primary {
+    background: rgba(59, 130, 246, 0.15);
+    color: #93C5FD;
+}
+
+[data-theme="dark"] .badge-soft-accent {
+    background: rgba(245, 158, 11, 0.15);
+    color: #FDE68A;
+}
+
+[data-theme="dark"] .badge-soft-success {
+    background: rgba(16, 185, 129, 0.15);
+    color: #6EE7B7;
+}
