@@ -80,6 +80,18 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+/* Lucide Icons & Inline SVG Sizing Guarantee */
+svg.lucide,
+.lucide,
+i[data-lucide] {
+    width: 20px;
+    height: 20px;
+    stroke-width: 2;
+    display: inline-block;
+    vertical-align: middle;
+    flex-shrink: 0;
+}
+
 h1, h2, h3, h4, h5, h6 {
     color: var(--text-primary);
     font-weight: 700;

@@ -304,3 +304,346 @@ function verifyCsrfToken(?string $token): bool {
     initSecureSession();
     return !empty($token) && !empty($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
 }
+
+/* ============================================================================
+   SERVICE PROVIDER (PARTNER) AUTHENTICATION & MANAGEMENT
+   ============================================================================ */
+
+/**
+ * Check if a service provider is currently authenticated
+ * 
+ * @return bool
+ */
+function isPartnerLoggedIn(): bool {
+    initSecureSession();
+    return !empty($_SESSION['partner_id']) && is_numeric($_SESSION['partner_id']);
+}
+
+/**
+ * Retrieve the authenticated partner's full record from database
+ * 
+ * @return array|null
+ */
+function getLoggedInPartner(): ?array {
+    if (!isPartnerLoggedIn()) {
+        return null;
+    }
+
+    try {
+        $pdo = getDBConnection();
+        $stmt = $pdo->prepare("SELECT id, full_name, mobile, email, gender, primary_skill, experience_years, city, service_area, address, verification_status, rejection_reason, created_at, updated_at FROM service_providers WHERE id = ? LIMIT 1");
+        $stmt->execute([$_SESSION['partner_id']]);
+        $partner = $stmt->fetch();
+        return $partner ?: null;
+    } catch (Exception $e) {
+        error_log("Failed to fetch partner: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Protect partner-only routes; redirects unauthenticated visitors to partner login
+ * 
+ * @param string $redirectUrl Target to return to after successful login
+ * @return array Authenticated partner data
+ */
+function requirePartnerAuth(string $redirectUrl = ''): array {
+    if (!isPartnerLoggedIn()) {
+        $loginUrl = 'partner-login.php';
+        if ($redirectUrl) {
+            $loginUrl .= '?redirect=' . urlencode($redirectUrl);
+        }
+        header("Location: " . $loginUrl);
+        exit;
+    }
+
+    $partner = getLoggedInPartner();
+    if (!$partner) {
+        logoutPartner();
+        header("Location: partner-login.php?msg=session_invalid");
+        exit;
+    }
+
+    return $partner;
+}
+
+/**
+ * Authenticate partner by mobile number OR email and password
+ * Enforces rate limiting, password verification, and status validation
+ * 
+ * @param string $identifier Mobile or Email
+ * @param string $password Plain text password
+ * @return array
+ */
+function loginPartner(string $identifier, string $password): array {
+    initSecureSession();
+
+    $identifier = trim($identifier);
+    $password = trim($password);
+
+    if (empty($identifier) || empty($password)) {
+        return ['success' => false, 'status' => 'missing_fields', 'message' => 'Please enter your registered mobile/email and password.'];
+    }
+
+    // Rate Limiting (5 attempts in 60s)
+    if (!isset($_SESSION['partner_login_attempts'])) {
+        $_SESSION['partner_login_attempts'] = 0;
+        $_SESSION['partner_last_attempt'] = time();
+    }
+    if ($_SESSION['partner_login_attempts'] >= 5 && (time() - $_SESSION['partner_last_attempt']) < 60) {
+        $remaining = 60 - (time() - $_SESSION['partner_last_attempt']);
+        return [
+            'success' => false,
+            'status' => 'rate_limited',
+            'message' => "Too many failed attempts. Please wait {$remaining} seconds before trying again."
+        ];
+    }
+
+    try {
+        $pdo = getDBConnection();
+        $stmt = $pdo->prepare("SELECT * FROM service_providers WHERE email = ? OR mobile = ? LIMIT 1");
+        $stmt->execute([$identifier, $identifier]);
+        $partner = $stmt->fetch();
+
+        if (!$partner || !password_verify($password, $partner['password_hash'])) {
+            $_SESSION['partner_login_attempts']++;
+            $_SESSION['partner_last_attempt'] = time();
+            return [
+                'success' => false,
+                'status' => 'invalid_credentials',
+                'message' => 'Invalid mobile number/email or password. Please verify your credentials.'
+            ];
+        }
+
+        // Reset rate limiter on valid password
+        $_SESSION['partner_login_attempts'] = 0;
+
+        $verificationStatus = $partner['verification_status'] ?? 'Pending';
+
+        // Check verification status
+        if ($verificationStatus === 'Pending') {
+            return [
+                'success' => false,
+                'status' => 'Pending',
+                'message' => 'Your partner application is awaiting admin verification.',
+                'partner' => [
+                    'id' => $partner['id'],
+                    'full_name' => $partner['full_name'],
+                    'mobile' => $partner['mobile'],
+                    'email' => $partner['email'],
+                    'primary_skill' => $partner['primary_skill'],
+                    'city' => $partner['city'],
+                    'created_at' => $partner['created_at']
+                ]
+            ];
+        }
+
+        if ($verificationStatus === 'Rejected') {
+            return [
+                'success' => false,
+                'status' => 'Rejected',
+                'message' => 'Your partner application could not be approved.',
+                'rejection_reason' => $partner['rejection_reason'] ?: 'Trade verification documents did not meet the standard.',
+                'partner' => [
+                    'id' => $partner['id'],
+                    'full_name' => $partner['full_name'],
+                    'mobile' => $partner['mobile'],
+                    'email' => $partner['email'],
+                    'primary_skill' => $partner['primary_skill'],
+                    'city' => $partner['city']
+                ]
+            ];
+        }
+
+        // Approved partner: establish session and regenerate ID to prevent fixation
+        session_regenerate_id(true);
+        $_SESSION['partner_id'] = (int)$partner['id'];
+        $_SESSION['partner_name'] = $partner['full_name'];
+        $_SESSION['partner_mobile'] = $partner['mobile'];
+        $_SESSION['partner_email'] = $partner['email'];
+        $_SESSION['partner_skill'] = $partner['primary_skill'];
+        $_SESSION['partner_city'] = $partner['city'];
+        $_SESSION['partner_status'] = 'Approved';
+
+        return [
+            'success' => true,
+            'status' => 'Approved',
+            'message' => 'Login successful! Welcome back, ' . htmlspecialchars($partner['full_name']),
+            'partner' => $partner
+        ];
+    } catch (Exception $e) {
+        error_log("Partner Login DB Error: " . $e->getMessage());
+        return ['success' => false, 'status' => 'error', 'message' => 'A system error occurred during partner login. Please try again.'];
+    }
+}
+
+/**
+ * Register a new service provider (Partner) with all 11 required fields
+ * 
+ * @param array $data Input form data
+ * @return array
+ */
+function registerPartner(array $data): array {
+    initSecureSession();
+
+    $fullName     = trim($data['full_name'] ?? '');
+    $mobile       = trim($data['mobile'] ?? '');
+    $email        = trim($data['email'] ?? '');
+    $gender       = trim($data['gender'] ?? 'Prefer not to say');
+    $primarySkill = trim($data['primary_skill'] ?? '');
+    $experience   = trim($data['experience_years'] ?? '');
+    $city         = trim($data['city'] ?? '');
+    $serviceArea  = trim($data['service_area'] ?? '');
+    $address      = trim($data['address'] ?? '');
+    $password     = $data['password'] ?? '';
+    $confirmPass  = $data['confirm_password'] ?? '';
+    $agreeTerms   = !empty($data['agree_terms']);
+
+    $errors = [];
+
+    // 1. Full legal name
+    if (empty($fullName) || strlen($fullName) < 2) {
+        $errors['full_name'] = 'Full legal name is required (minimum 2 characters).';
+    }
+
+    // 2. Mobile (10-digit Indian mobile)
+    $cleanMobile = preg_replace('/[^\d]/', '', $mobile);
+    if (!preg_match('/^[6-9]\d{9}$/', $cleanMobile)) {
+        $errors['mobile'] = 'Please enter a valid 10-digit Indian mobile number.';
+    } else {
+        $mobile = $cleanMobile;
+    }
+
+    // 3. Email
+    if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors['email'] = 'Please enter a valid email address.';
+    }
+
+    // 4. Gender (optional)
+    $allowedGenders = ['Male', 'Female', 'Other', 'Prefer not to say'];
+    if (!in_array($gender, $allowedGenders, true)) {
+        $gender = 'Prefer not to say';
+    }
+
+    // 5. Primary skill or trade
+    if (empty($primarySkill)) {
+        $errors['primary_skill'] = 'Please select your primary skill or trade.';
+    }
+
+    // 6. Years of experience
+    if (empty($experience)) {
+        $errors['experience_years'] = 'Please select your years of experience.';
+    }
+
+    // 7. City
+    if (empty($city)) {
+        $errors['city'] = 'Please select your primary city of service.';
+    }
+
+    // 8. Residential address
+    if (empty($address) || strlen($address) < 5) {
+        $errors['address'] = 'Please provide your residential address (minimum 5 characters).';
+    }
+
+    // 9. Password
+    if (strlen($password) < 6) {
+        $errors['password'] = 'Password must be at least 6 characters long.';
+    }
+
+    // 10. Confirm password
+    if ($password !== $confirmPass) {
+        $errors['confirm_password'] = 'Passwords do not match. Please verify.';
+    }
+
+    // 11. Terms and partner agreement
+    if (!$agreeTerms) {
+        $errors['agree_terms'] = 'You must accept the Terms and Conditions and KaamMitra Partner Agreement.';
+    }
+
+    if (!empty($errors)) {
+        return ['success' => false, 'message' => 'Please correct the highlighted fields.', 'errors' => $errors];
+    }
+
+    try {
+        $pdo = getDBConnection();
+
+        // Check unique mobile
+        $stmt = $pdo->prepare("SELECT id FROM service_providers WHERE mobile = ? LIMIT 1");
+        $stmt->execute([$mobile]);
+        if ($stmt->fetch()) {
+            return [
+                'success' => false,
+                'message' => 'A partner account is already registered with this mobile number. Please sign in.',
+                'errors' => ['mobile' => 'Mobile number already registered.']
+            ];
+        }
+
+        // Check unique email
+        $stmt = $pdo->prepare("SELECT id FROM service_providers WHERE email = ? LIMIT 1");
+        $stmt->execute([$email]);
+        if ($stmt->fetch()) {
+            return [
+                'success' => false,
+                'message' => 'A partner account is already registered with this email address. Please sign in.',
+                'errors' => ['email' => 'Email address already registered.']
+            ];
+        }
+
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+
+        $insertStmt = $pdo->prepare("
+            INSERT INTO service_providers 
+            (full_name, mobile, email, gender, primary_skill, experience_years, city, service_area, address, password_hash, verification_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pending')
+        ");
+        $insertStmt->execute([
+            $fullName,
+            $mobile,
+            $email,
+            $gender,
+            $primarySkill,
+            $experience,
+            $city,
+            $serviceArea ?: null,
+            $address,
+            $passwordHash
+        ]);
+
+        $partnerId = (int)$pdo->lastInsertId();
+
+        return [
+            'success' => true,
+            'partner_id' => $partnerId,
+            'status' => 'Pending',
+            'message' => 'Registration submitted successfully! Your application is pending admin verification.',
+            'partner' => [
+                'id' => $partnerId,
+                'full_name' => $fullName,
+                'mobile' => $mobile,
+                'email' => $email,
+                'primary_skill' => $primarySkill,
+                'city' => $city
+            ],
+            'errors' => []
+        ];
+    } catch (Exception $e) {
+        error_log("Partner Registration DB Error: " . $e->getMessage());
+        return ['success' => false, 'message' => 'A database error occurred during partner registration. Please try again.', 'errors' => []];
+    }
+}
+
+/**
+ * Log out partner and clear partner session variables
+ */
+function logoutPartner(): void {
+    initSecureSession();
+    unset(
+        $_SESSION['partner_id'],
+        $_SESSION['partner_name'],
+        $_SESSION['partner_mobile'],
+        $_SESSION['partner_email'],
+        $_SESSION['partner_skill'],
+        $_SESSION['partner_city'],
+        $_SESSION['partner_status']
+    );
+}

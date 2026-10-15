@@ -14,6 +14,9 @@ require_once __DIR__ . '/data/faqs.php';
 $isLoggedIn = isCustomerLoggedIn();
 $customer = $isLoggedIn ? getLoggedInCustomer() : null;
 
+$isPartnerLogged = isPartnerLoggedIn();
+$partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
+
 /**
  * Renders a crisp Lucide icon element with fallback inline SVG
  */
@@ -137,10 +140,17 @@ function renderIcon(string $name, int $size = 20): string {
 
             <!-- Actions -->
             <div class="nav-actions">
-                <button type="button" class="btn btn-outline btn-sm trigger-partner-modal nav-partner-btn">
-                    <i data-lucide="users" style="width: 14px; height: 14px;"></i>
-                    <span>For Partners</span>
-                </button>
+                <?php if ($isPartnerLogged && $partnerUser): ?>
+                    <a href="partner-dashboard.php" class="btn btn-outline btn-sm nav-partner-btn" style="text-decoration: none;" title="Partner Dashboard">
+                        <i data-lucide="briefcase" style="width: 14px; height: 14px; color: #10B981;"></i>
+                        <span>Mitra: <?= htmlspecialchars(explode(' ', $partnerUser['full_name'])[0]); ?></span>
+                    </a>
+                <?php else: ?>
+                    <a href="partner-login.php" class="btn btn-outline btn-sm nav-partner-btn" style="text-decoration: none;" title="Partner Portal">
+                        <i data-lucide="users" style="width: 14px; height: 14px;"></i>
+                        <span>For Partners</span>
+                    </a>
+                <?php endif; ?>
                 <?php if ($isLoggedIn && $customer): ?>
                     <a href="dashboard.php" class="btn btn-outline btn-sm nav-user-pill" title="Customer Dashboard" style="display: inline-flex; align-items: center; gap: 0.4rem;">
                         <i data-lucide="user-check" style="width: 15px; height: 15px; color: #10B981;"></i>
@@ -213,7 +223,21 @@ function renderIcon(string $name, int $size = 20): string {
                     <a href="#howItWorks" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">How It Works</a>
                     <a href="#reviews" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Customer Reviews</a>
                     <a href="#faq" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Help &amp; FAQs</a>
-                    <a href="#partnerSection" class="mobile-nav-link trigger-partner-modal" style="font-size: 1.1rem; font-weight: 700; color: #FF5500;">Join as Partner (₹48k/mo)</a>
+                    <?php if ($isPartnerLogged && $partnerUser): ?>
+                        <a href="partner-dashboard.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #10B981; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
+                            <span>Partner Dashboard (<?= htmlspecialchars(explode(' ', $partnerUser['full_name'])[0]); ?>)</span>
+                        </a>
+                    <?php else: ?>
+                        <a href="partner-login.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="log-in" style="width: 18px; height: 18px; color: #FF6600;"></i>
+                            <span>Partner Login</span>
+                        </a>
+                        <a href="partner-register.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #FF5500; display: flex; align-items: center; gap: 0.5rem;">
+                            <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
+                            <span>Become a Partner (₹48k/mo)</span>
+                        </a>
+                    <?php endif; ?>
                 </div>
 
                 <a href="<?= $isLoggedIn ? 'book.php' : 'login.php?redirect=book.php'; ?>" class="btn btn-primary btn-full" style="margin-bottom: 0.75rem; justify-content: center; text-decoration: none;">
@@ -815,10 +839,15 @@ function renderIcon(string $name, int $size = 20): string {
                             </div>
                         </div>
 
-                        <button type="button" class="btn btn-primary btn-lg trigger-partner-modal">
-                            <span>Register as Partner Now</span>
-                            <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
-                        </button>
+                        <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                            <a href="partner-register.php" class="btn btn-primary btn-lg" style="text-decoration: none;">
+                                <span>Register as Partner Now</span>
+                                <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
+                            </a>
+                            <a href="partner-login.php" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.35); text-decoration: none; background: rgba(255,255,255,0.06);">
+                                <span>Partner Login</span>
+                            </a>
+                        </div>
                     </div>
 
                     <div class="partner-earnings-widget">
@@ -1086,107 +1115,6 @@ function renderIcon(string $name, int $size = 20): string {
 
 
 
-    <!-- =======================================================================
-         PARTNER REGISTRATION MODAL
-         ======================================================================= -->
-    <div id="partnerModalOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Partner Registration">
-        <div class="modal-container">
-            <div class="modal-header">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                    <i data-lucide="users" style="color: var(--brand-coral); width: 20px; height: 20px;"></i>
-                    <h3 class="modal-title">Join as a KaamMitra Partner</h3>
-                </div>
-                <button id="closePartnerModalBtn" class="modal-close-btn" aria-label="Close modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="partnerFormSection">
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.5rem;">
-                        Earn ₹35,000 to ₹55,000/month with steady verified bookings in your city. 0% commission for your first 30 days!
-                    </p>
-
-                    <form id="partnerRegisterForm">
-                        <div class="form-field-group">
-                            <label for="partnerNameInput" class="field-label">Full Legal Name (as per Aadhaar)</label>
-                            <input type="text" id="partnerNameInput" class="form-control" placeholder="e.g. Ramesh Kumar" required>
-                        </div>
-
-                        <div class="form-field-group">
-                            <label for="partnerPhoneInput" class="field-label">Mobile Number</label>
-                            <input type="tel" id="partnerPhoneInput" class="form-control" placeholder="10-digit mobile number" maxlength="10" required>
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                            <div class="form-field-group">
-                                <label for="partnerTradeSelect" class="field-label">Primary Skill / Trade</label>
-                                <select id="partnerTradeSelect" class="select-control" required>
-                                    <option value="Master Electrician">Master Electrician</option>
-                                    <option value="Certified Plumber">Certified Plumber</option>
-                                    <option value="AC & Appliance Specialist">AC &amp; Appliance Specialist</option>
-                                    <option value="Carpenter & Woodworker">Carpenter &amp; Woodworker</option>
-                                    <option value="Deep Cleaning Specialist">Deep Cleaning Specialist</option>
-                                    <option value="Painter & Waterproofing">Painter &amp; Waterproofing</option>
-                                </select>
-                            </div>
-                            <div class="form-field-group">
-                                <label for="partnerExpSelect" class="field-label">Experience</label>
-                                <select id="partnerExpSelect" class="select-control">
-                                    <option value="1-3 Years">1 - 3 Years</option>
-                                    <option value="3-5 Years">3 - 5 Years</option>
-                                    <option value="5-10 Years">5 - 10 Years</option>
-                                    <option value="10+ Years">10+ Years</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem;">
-                            <div class="form-field-group">
-                                <label for="partnerCitySelect" class="field-label">City</label>
-                                <select id="partnerCitySelect" class="select-control">
-                                    <?php foreach ($AVAILABLE_CITIES as $city): ?>
-                                        <option value="<?= htmlspecialchars($city); ?>"><?= htmlspecialchars($city); ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                            <div class="form-field-group">
-                                <label for="partnerAadhaarInput" class="field-label">Aadhaar (Last 4 Digits)</label>
-                                <input type="text" id="partnerAadhaarInput" class="form-control" placeholder="e.g. 5421" maxlength="4">
-                            </div>
-                        </div>
-
-                        <button type="submit" id="btnSubmitPartner" class="btn btn-primary btn-full">
-                            <span>Submit Application</span>
-                            <i data-lucide="arrow-right" style="width: 16px; height: 16px;"></i>
-                        </button>
-                    </form>
-                </div>
-
-                <div id="partnerConfirmationSection" style="display: none; text-align: center; padding: 1.5rem 0;">
-                    <div style="width: 60px; height: 60px; border-radius: 50%; background: #ECFDF5; color: #10B981; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem;">
-                        <i data-lucide="check" style="width: 32px; height: 32px;"></i>
-                    </div>
-                    <h4 style="font-size: 1.35rem; color: var(--brand-navy); margin-bottom: 0.35rem;">Application Received!</h4>
-                    <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">Welcome to the KaamMitra partner ecosystem.</p>
-
-                    <div style="display: inline-block; background: var(--brand-coral-soft); color: var(--brand-coral); border: 1.5px dashed var(--brand-coral-border); padding: 0.45rem 1rem; border-radius: 10px; font-weight: 700; margin-bottom: 1.5rem;">
-                        Partner Ref: <span id="confPartnerId">MITRA-10293</span>
-                    </div>
-
-                    <div style="background: var(--bg-surface-alt); border: 1px solid var(--border-light); border-radius: 12px; padding: 1.25rem; text-align: left; margin-bottom: 1.5rem; font-size: 0.875rem;">
-                        <p style="margin-bottom: 0.4rem;">Applicant: <strong id="confPartnerName" style="color: var(--brand-navy);">-</strong></p>
-                        <p style="margin-bottom: 0.4rem;">Trade: <strong id="confPartnerTrade" style="color: var(--brand-navy);">-</strong></p>
-                        <p style="margin-bottom: 0.4rem;">City: <strong id="confPartnerCity" style="color: var(--brand-navy);">-</strong></p>
-                        <p style="color: #10B981; font-weight: 600; margin-top: 0.65rem;">
-                            ✓ Our coordinator will call you within 4 hours to verify documents and dispatch your free toolkit.
-                        </p>
-                    </div>
-
-                    <button type="button" id="btnPartnerDone" class="btn btn-dark btn-full">
-                        Close &amp; Back to Site
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- =======================================================================
          MOBILE APP-LIKE FIXED BOTTOM NAVIGATION BAR
@@ -1206,10 +1134,10 @@ function renderIcon(string $name, int $size = 20): string {
             </div>
             <span>Book</span>
         </a>
-        <button type="button" class="app-tab trigger-partner-modal" data-tab="partner" id="tabPartner" aria-label="Register as Partner">
-            <i data-lucide="users"></i>
+        <a href="<?= $isPartnerLogged ? 'partner-dashboard.php' : 'partner-login.php'; ?>" class="app-tab" data-tab="partner" id="tabPartner" aria-label="Partner Portal">
+            <i data-lucide="briefcase"></i>
             <span>Partner</span>
-        </button>
+        </a>
         <?php if ($isLoggedIn): ?>
             <a href="dashboard.php" class="app-tab" data-tab="account" id="tabAccount" aria-label="My Account">
                 <i data-lucide="user"></i>
