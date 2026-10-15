@@ -13,6 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initLocationPicker();
     initLiveSearch();
     initServiceFilters();
+    initRateCardToggles();
     initCategoryLauncher();
     initFaqAccordion();
     initMobileDrawer();
@@ -125,9 +126,10 @@ function initLocationPicker() {
             cityButtons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
-            if (navCityText) {
-                navCityText.textContent = chosenCity + (chosenCity.includes(',') ? '' : ', India');
-            }
+            const navMobileCityText = document.getElementById('navMobileCityText');
+            const displayText = chosenCity + (chosenCity.includes(',') ? '' : ', MH');
+            if (navCityText) navCityText.textContent = displayText;
+            if (navMobileCityText) navMobileCityText.textContent = displayText;
 
             localStorage.setItem('km_user_city', chosenCity);
             closeLocationModal();
@@ -339,6 +341,30 @@ function initServiceFilters() {
         btn.addEventListener('click', () => {
             const cat = btn.getAttribute('data-category');
             filterServicesByCategory(cat);
+        });
+    });
+}
+
+function initRateCardToggles() {
+    const toggleBtns = document.querySelectorAll('.rate-card-toggle-btn');
+    toggleBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            const drawer = btn.nextElementSibling;
+            if (!drawer) return;
+            const isOpen = drawer.classList.contains('open');
+            if (isOpen) {
+                drawer.classList.remove('open');
+                btn.classList.remove('open');
+                btn.setAttribute('aria-expanded', 'false');
+            } else {
+                drawer.classList.add('open');
+                btn.classList.add('open');
+                btn.setAttribute('aria-expanded', 'true');
+                if (window.lucide) {
+                    lucide.createIcons({ root: drawer });
+                }
+            }
         });
     });
 }
