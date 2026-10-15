@@ -229,6 +229,10 @@ function goToStep(step) {
             node.classList.add('completed');
         }
     }
+
+    if (window.lucide) {
+        lucide.createIcons();
+    }
 }
 
 async function handleBookingSubmit() {

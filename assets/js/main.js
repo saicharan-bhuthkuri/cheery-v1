@@ -1,18 +1,26 @@
 /**
- * KaamMitra - Urban Company Reference Architecture JavaScript
+ * KaamMitra - Modern Marketplace & App-First Architecture Controller
  */
 
 document.addEventListener('DOMContentLoaded', () => {
+    // 1. Initialize Lucide Icons
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+
+    // 2. Core Navigation & Interactions
     initStickyHeader();
+    initLocationPicker();
+    initLiveSearch();
     initServiceFilters();
     initCategoryLauncher();
-    initHeaderSearch();
     initFaqAccordion();
     initMobileDrawer();
+    initMobileBottomBar();
 });
 
 /* ==========================================================================
-   STICKY HEADER SCROLL EFFECT
+   1. STICKY HEADER SCROLL EFFECT
    ========================================================================== */
 function initStickyHeader() {
     const header = document.getElementById('siteHeader');
@@ -28,8 +36,277 @@ function initStickyHeader() {
 }
 
 /* ==========================================================================
-   SERVICE CATEGORY TABS & FILTERING
+   2. LOCATION SELECTOR & CITY PICKER MODAL
    ========================================================================== */
+function initLocationPicker() {
+    const triggerBtns = document.querySelectorAll('.trigger-location-modal, #navLocationBtn');
+    const modalOverlay = document.getElementById('locationModalOverlay');
+    const closeBtn = document.getElementById('closeLocationModalBtn');
+    const searchInput = document.getElementById('citySearchInput');
+    const cityButtons = document.querySelectorAll('.city-select-btn');
+    const navCityText = document.getElementById('navCityText');
+
+    // Restore saved city from localStorage
+    const savedCity = localStorage.getItem('km_user_city');
+    if (savedCity && navCityText) {
+        navCityText.textContent = savedCity + (savedCity.includes(',') ? '' : ', India');
+        cityButtons.forEach(btn => {
+            if (btn.getAttribute('data-city') === savedCity) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+
+    function openLocationModal() {
+        if (!modalOverlay) return;
+        modalOverlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+        if (searchInput) {
+            searchInput.value = '';
+            filterCities('');
+            setTimeout(() => searchInput.focus(), 100);
+        }
+    }
+
+    function closeLocationModal() {
+        if (!modalOverlay) return;
+        modalOverlay.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+
+    triggerBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            openLocationModal();
+        });
+    });
+
+    if (closeBtn) closeBtn.addEventListener('click', closeLocationModal);
+
+    if (modalOverlay) {
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) closeLocationModal();
+        });
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modalOverlay && modalOverlay.classList.contains('active')) {
+            closeLocationModal();
+        }
+    });
+
+    // City search filter
+    function filterCities(query) {
+        const q = query.toLowerCase().trim();
+        cityButtons.forEach(btn => {
+            const cityName = (btn.getAttribute('data-city') || '').toLowerCase();
+            if (!q || cityName.includes(q)) {
+                btn.style.display = 'flex';
+            } else {
+                btn.style.display = 'none';
+            }
+        });
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener('input', (e) => {
+            filterCities(e.target.value);
+        });
+    }
+
+    // City Selection handler
+    cityButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const chosenCity = btn.getAttribute('data-city');
+            if (!chosenCity) return;
+
+            cityButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            if (navCityText) {
+                navCityText.textContent = chosenCity + (chosenCity.includes(',') ? '' : ', India');
+            }
+
+            localStorage.setItem('km_user_city', chosenCity);
+            closeLocationModal();
+            window.showToast(`Service location set to ${chosenCity}`, 'success');
+        });
+    });
+}
+
+/* ==========================================================================
+   3. LIVE SEARCH & INSTANT AUTO-SUGGESTIONS DROPDOWN
+   ========================================================================== */
+function initLiveSearch() {
+    const desktopInput = document.getElementById('headerSearchInput');
+    const desktopClearBtn = document.getElementById('clearSearchBtn');
+    const desktopDropdown = document.getElementById('headerSearchDropdown');
+
+    const mobileInput = document.getElementById('mobileSearchInput');
+    const mobileClearBtn = document.getElementById('clearMobileSearchBtn');
+    const mobileDropdown = document.getElementById('mobileSearchDropdown');
+
+    const services = window.KM_SERVICES || [];
+
+    function setupSearchField(input, clearBtn, dropdown) {
+        if (!input || !dropdown) return;
+
+        input.addEventListener('input', () => {
+            const query = input.value.trim().toLowerCase();
+
+            if (clearBtn) {
+                clearBtn.style.display = query.length > 0 ? 'block' : 'none';
+            }
+
+            if (query.length < 2) {
+                dropdown.style.display = 'none';
+                dropdown.innerHTML = '';
+                // If emptied, reset catalog filter
+                if (query.length === 0) {
+                    filterServicesByCategory('all');
+                }
+                return;
+            }
+
+            // Find matching services & sub-services
+            const matches = [];
+
+            services.forEach(service => {
+                // Match parent title/subtitle
+                if (service.title.toLowerCase().includes(query) || service.subtitle.toLowerCase().includes(query)) {
+                    matches.push({
+                        title: service.title,
+                        category: service.category,
+                        subName: service.sub_services && service.sub_services[0] ? service.sub_services[0].name : service.title,
+                        price: service.starting_price,
+                        isSub: false,
+                        icon: service.icon || 'wrench'
+                    });
+                }
+
+                // Match subservices
+                if (Array.isArray(service.sub_services)) {
+                    service.sub_services.forEach(sub => {
+                        if (sub.name.toLowerCase().includes(query)) {
+                            matches.push({
+                                title: sub.name,
+                                category: service.category,
+                                subName: sub.name,
+                                price: sub.price,
+                                time: sub.time,
+                                isSub: true,
+                                icon: service.icon || 'wrench'
+                            });
+                        }
+                    });
+                }
+            });
+
+            // Filter catalog cards in the page simultaneously
+            filterCatalogCards(query);
+
+            renderDropdownResults(dropdown, matches, query);
+        });
+
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                input.value = '';
+                clearBtn.style.display = 'none';
+                dropdown.style.display = 'none';
+                filterServicesByCategory('all');
+                input.focus();
+            });
+        }
+    }
+
+    function renderDropdownResults(dropdown, matches, query) {
+        if (!matches.length) {
+            dropdown.innerHTML = `
+                <div style="padding: 1.25rem; text-align: center; color: #64748B; font-size: 0.88rem;">
+                    <p style="margin-bottom: 0.5rem;">No exact service matches for <strong>"${escapeHtml(query)}"</strong></p>
+                    <a href="#services" style="color: #FF6600; font-weight: 600;" onclick="this.closest('.search-dropdown-menu').style.display='none';">Browse All Rate Cards &rarr;</a>
+                </div>
+            `;
+            dropdown.style.display = 'block';
+            return;
+        }
+
+        const topMatches = matches.slice(0, 6);
+        let html = `<div class="search-dropdown-head">Recommended Services (${matches.length})</div>`;
+
+        topMatches.forEach(item => {
+            html += `
+                <div class="search-suggestion-item" data-cat="${item.category}" data-sub="${escapeHtml(item.subName)}" data-price="${item.price}">
+                    <div class="search-sug-left">
+                        <div class="search-sug-icon">
+                            <i data-lucide="${getLucideName(item.icon)}" style="width: 17px; height: 17px;"></i>
+                        </div>
+                        <div>
+                            <div class="search-sug-title">${highlightMatch(item.title, query)}</div>
+                            <div class="search-sug-sub">${capitalize(item.category)} • ⚡ 30 min arrival</div>
+                        </div>
+                    </div>
+                    <div class="search-sug-right">
+                        <span class="search-sug-price">₹${item.price}</span>
+                        <button type="button" class="search-sug-book-btn">Book</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        dropdown.innerHTML = html;
+        dropdown.style.display = 'block';
+
+        if (window.lucide) {
+            lucide.createIcons({ root: dropdown });
+        }
+
+        // Attach booking triggers
+        dropdown.querySelectorAll('.search-suggestion-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const cat = el.getAttribute('data-cat');
+                const sub = el.getAttribute('data-sub');
+                const price = el.getAttribute('data-price');
+                dropdown.style.display = 'none';
+                if (window.openBookingModal) {
+                    window.openBookingModal(cat, sub, price);
+                }
+            });
+        });
+    }
+
+    function filterCatalogCards(query) {
+        const catalogCards = document.querySelectorAll('.catalog-card');
+        catalogCards.forEach(card => {
+            const text = card.textContent.toLowerCase();
+            if (text.includes(query)) {
+                card.style.display = 'flex';
+                card.style.opacity = '1';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+
+    setupSearchField(desktopInput, desktopClearBtn, desktopDropdown);
+    setupSearchField(mobileInput, mobileClearBtn, mobileDropdown);
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+        if (desktopDropdown && !desktopDropdown.contains(e.target) && e.target !== desktopInput) {
+            desktopDropdown.style.display = 'none';
+        }
+        if (mobileDropdown && !mobileDropdown.contains(e.target) && e.target !== mobileInput) {
+            mobileDropdown.style.display = 'none';
+        }
+    });
+}
+
+/* ==========================================================================
+   4. SERVICE CATEGORY TABS & FILTERING
+   ========================================================================= */
 function filterServicesByCategory(category) {
     const tabButtons = document.querySelectorAll('.category-tab-btn');
     const catalogCards = document.querySelectorAll('.catalog-card');
@@ -67,7 +344,7 @@ function initServiceFilters() {
 }
 
 /* ==========================================================================
-   HERO QUICK CATEGORY APP TILES LAUNCHER
+   5. HERO QUICK CATEGORY APP TILES LAUNCHER
    ========================================================================== */
 function initCategoryLauncher() {
     const tiles = document.querySelectorAll('.trigger-category-filter');
@@ -89,46 +366,7 @@ function initCategoryLauncher() {
 }
 
 /* ==========================================================================
-   HEADER LIVE SEARCH
-   ========================================================================== */
-function initHeaderSearch() {
-    const searchInput = document.getElementById('headerSearchInput');
-    const catalogCards = document.querySelectorAll('.catalog-card');
-    if (!searchInput) return;
-
-    searchInput.addEventListener('input', (e) => {
-        const query = e.target.value.toLowerCase().trim();
-        
-        if (!query) {
-            filterServicesByCategory('all');
-            return;
-        }
-
-        // Reset category tab to All
-        document.querySelectorAll('.category-tab-btn').forEach(b => b.classList.remove('active'));
-        const allBtn = document.querySelector('.category-tab-btn[data-category="all"]');
-        if (allBtn) allBtn.classList.add('active');
-
-        catalogCards.forEach(card => {
-            const cardText = card.textContent.toLowerCase();
-            if (cardText.includes(query)) {
-                card.style.display = 'flex';
-                card.style.opacity = '1';
-            } else {
-                card.style.display = 'none';
-            }
-        });
-
-        // If user is searching, scroll smoothly to the services grid
-        const servicesSection = document.getElementById('services');
-        if (servicesSection && window.scrollY < 300) {
-            servicesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    });
-}
-
-/* ==========================================================================
-   FAQ ACCORDION
+   6. FAQ ACCORDION
    ========================================================================== */
 function initFaqAccordion() {
     const faqCards = document.querySelectorAll('.faq-card');
@@ -154,7 +392,7 @@ function initFaqAccordion() {
 }
 
 /* ==========================================================================
-   MOBILE DRAWER NAVIGATION
+   7. MOBILE DRAWER NAVIGATION
    ========================================================================== */
 function initMobileDrawer() {
     const hamburgerBtn = document.getElementById('mobileMenuBtn');
@@ -174,20 +412,14 @@ function initMobileDrawer() {
 
     hamburgerBtn.addEventListener('click', openDrawer);
 
-    if (closeBtn) {
-        closeBtn.addEventListener('click', closeDrawer);
-    }
+    if (closeBtn) closeBtn.addEventListener('click', closeDrawer);
 
     drawerOverlay.addEventListener('click', (e) => {
-        if (e.target === drawerOverlay) {
-            closeDrawer();
-        }
+        if (e.target === drawerOverlay) closeDrawer();
     });
 
     document.querySelectorAll('.mobile-nav-link').forEach(link => {
-        link.addEventListener('click', () => {
-            closeDrawer();
-        });
+        link.addEventListener('click', closeDrawer);
     });
 
     document.addEventListener('keydown', (e) => {
@@ -198,8 +430,72 @@ function initMobileDrawer() {
 }
 
 /* ==========================================================================
-   GLOBAL TOAST HELPER
+   8. MOBILE APP BOTTOM NAVIGATION BAR CONTROLLER
    ========================================================================== */
+function initMobileBottomBar() {
+    const tabs = document.querySelectorAll('.mobile-app-bottom-bar .app-tab');
+    if (!tabs.length) return;
+
+    // Track scroll to update active tab
+    window.addEventListener('scroll', () => {
+        const scrollPos = window.scrollY;
+        const servicesSection = document.getElementById('services');
+
+        if (servicesSection && scrollPos >= servicesSection.offsetTop - 150) {
+            setActiveTab('services');
+        } else {
+            setActiveTab('home');
+        }
+    });
+
+    function setActiveTab(tabName) {
+        tabs.forEach(tab => {
+            if (tab.getAttribute('data-tab') === tabName) {
+                tab.classList.add('active');
+            } else if (tab.getAttribute('data-tab') !== 'book') {
+                tab.classList.remove('active');
+            }
+        });
+    }
+}
+
+/* ==========================================================================
+   HELPERS & GLOBAL UTILITIES
+   ========================================================================== */
+function getLucideName(icon) {
+    const map = {
+        'droplet': 'droplet',
+        'zap': 'zap',
+        'cpu': 'cpu',
+        'hammer': 'hammer',
+        'sparkles': 'sparkles',
+        'paint-brush': 'palette',
+        'lock': 'lock',
+        'wrench': 'wrench'
+    };
+    return map[icon] || 'wrench';
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    return text.toString().replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+    }[m]));
+}
+
+function highlightMatch(text, query) {
+    if (!query) return escapeHtml(text);
+    const escapedText = escapeHtml(text);
+    const escapedQuery = escapeHtml(query);
+    const regex = new RegExp(`(${escapedQuery})`, 'gi');
+    return escapedText.replace(regex, '<span style="color: #FF6600; font-weight: 700;">$1</span>');
+}
+
+function capitalize(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
 window.showToast = function(message, type = 'success') {
     let container = document.querySelector('.toast-container');
     if (!container) {
@@ -211,16 +507,19 @@ window.showToast = function(message, type = 'success') {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     
-    const iconSvg = type === 'success' 
-        ? `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>`
-        : `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>`;
+    const iconName = type === 'success' ? 'check-circle' : 'alert-circle';
+    const iconColor = type === 'success' ? '#10B981' : '#EF4444';
 
     toast.innerHTML = `
-        ${iconSvg}
+        <i data-lucide="${iconName}" style="color: ${iconColor}; width: 20px; height: 20px; flex-shrink: 0;"></i>
         <span>${message}</span>
     `;
 
     container.appendChild(toast);
+
+    if (window.lucide) {
+        lucide.createIcons({ root: toast });
+    }
 
     setTimeout(() => {
         toast.style.opacity = '0';

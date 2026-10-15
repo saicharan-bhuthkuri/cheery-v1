@@ -19,6 +19,40 @@ require_once __DIR__ . '/data/faqs.php';
  * @return string
  */
 function renderIcon(string $name, int $size = 20): string {
+    $lucideNameMap = [
+        'wrench' => 'wrench',
+        'droplet' => 'droplet',
+        'zap' => 'zap',
+        'cpu' => 'cpu',
+        'hammer' => 'hammer',
+        'sparkles' => 'sparkles',
+        'paint-brush' => 'palette',
+        'lock' => 'lock',
+        'bolt' => 'zap',
+        'check' => 'check',
+        'shield-check' => 'shield-check',
+        'badge-check' => 'badge-check',
+        'star' => 'star',
+        'clock' => 'clock',
+        'phone' => 'phone',
+        'map-pin' => 'map-pin',
+        'calendar-clock' => 'calendar',
+        'user-check' => 'user-check',
+        'tool' => 'wrench',
+        'shield' => 'shield',
+        'users' => 'users',
+        'home' => 'home',
+        'receipt' => 'receipt',
+        'headset' => 'headphones',
+        'wallet' => 'wallet',
+        'gift' => 'gift',
+        'shirt' => 'shirt',
+        'heart-handshake' => 'heart-handshake',
+        'search' => 'search',
+        'chevron-down' => 'chevron-down'
+    ];
+    $lucideName = $lucideNameMap[$name] ?? $name;
+
     $icons = [
         'wrench' => '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>',
         'droplet' => '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>',
@@ -54,8 +88,8 @@ function renderIcon(string $name, int $size = 20): string {
 
     $content = $icons[$name] ?? '<circle cx="12" cy="12" r="10"></circle>';
     return sprintf(
-        '<svg width="%d" height="%d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="km-icon km-icon-%s">%s</svg>',
-        $size, $size, htmlspecialchars($name), $content
+        '<i data-lucide="%s" class="km-lucide km-icon-%s" style="width: %dpx; height: %dpx; display: inline-flex; align-items: center; justify-content: center;"><svg width="%d" height="%d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">%s</svg></i>',
+        htmlspecialchars($lucideName), htmlspecialchars($name), $size, $size, $size, $size, $content
     );
 }
 ?>
@@ -78,14 +112,15 @@ function renderIcon(string $name, int $size = 20): string {
     <meta property="og:url" content="https://www.kaammitra.in/mumbai">
     <meta property="og:image" content="assets/images/hero-technician.jpg">
 
-    <!-- Stylesheets -->
+    <!-- Local Lucide Icons & Stylesheets -->
     <link rel="stylesheet" href="assets/css/variables.css">
     <link rel="stylesheet" href="assets/css/style.css">
+    <script src="assets/js/lucide.min.js"></script>
 </head>
 <body>
 
     <!-- =======================================================================
-         NAVIGATION BAR (URBAN COMPANY AESTHETIC)
+         NAVIGATION BAR (MODERN APP-FIRST MARKETPLACE HEADER)
          ======================================================================= -->
     <header class="site-header" id="siteHeader">
         <div class="container navbar">
@@ -93,26 +128,28 @@ function renderIcon(string $name, int $size = 20): string {
             <div class="brand-group">
                 <a href="index.php" class="brand-link" aria-label="KaamMitra Home">
                     <div class="brand-logo-symbol">
-                        <?= renderIcon('wrench', 20); ?>
+                        <i data-lucide="wrench" style="width: 20px; height: 20px;"></i>
                     </div>
-                    <div style="display: flex; align-items: baseline; gap: 0.5rem;">
+                    <div class="brand-text-wrap">
                         <span class="brand-title">Kaam<span>Mitra</span></span>
                         <span class="brand-url-badge">kaammitra.in</span>
                     </div>
                 </a>
 
-                <!-- Location Selector Pill -->
-                <div class="nav-location-pill" title="Choose your service area">
-                    <?= renderIcon('map-pin', 15); ?>
-                    <span id="navCityText">Powai, Mumbai</span>
-                    <?= renderIcon('chevron-down', 13); ?>
-                </div>
+                <!-- Interactive Location Selector Pill (Click triggers Location Modal) -->
+                <button type="button" class="nav-location-pill trigger-location-modal" id="navLocationBtn" title="Choose your city" aria-label="Select location">
+                    <i data-lucide="map-pin" style="width: 15px; height: 15px; color: #FF6600;"></i>
+                    <span id="navCityText">Mumbai, MH</span>
+                    <i data-lucide="chevron-down" style="width: 13px; height: 13px;"></i>
+                </button>
             </div>
 
-            <!-- Header Quick Search (Urban Company Style) -->
+            <!-- Header Quick Search with Live Suggestions Dropdown -->
             <div class="header-search-wrap">
-                <?= renderIcon('search', 16); ?>
-                <input type="text" id="headerSearchInput" class="header-search-input" placeholder="Search for 'AC service', 'Plumber'..." aria-label="Search services">
+                <i data-lucide="search" style="width: 16px; height: 16px; color: #94A3B8;"></i>
+                <input type="text" id="headerSearchInput" class="header-search-input" placeholder="Search for 'AC service', 'Plumber', 'Leak'..." aria-label="Search services" autocomplete="off">
+                <button type="button" id="clearSearchBtn" class="search-clear-btn" aria-label="Clear search" style="display: none;">&times;</button>
+                <div id="headerSearchDropdown" class="search-dropdown-menu" style="display: none;"></div>
             </div>
 
             <!-- Navigation Links -->
@@ -130,20 +167,29 @@ function renderIcon(string $name, int $size = 20): string {
             <!-- Call-to-Action Group -->
             <div class="nav-cta-group">
                 <button type="button" class="btn btn-outline-navy btn-sm trigger-partner-modal">
-                    <?= renderIcon('users', 14); ?>
+                    <i data-lucide="users" style="width: 15px; height: 15px;"></i>
                     <span>Register as Partner</span>
                 </button>
                 <button type="button" class="btn btn-primary btn-sm trigger-booking-modal" data-service-cat="plumbing">
                     <span>Book a Service</span>
                 </button>
+                <a href="tel:<?= APP_PHONE; ?>" class="mobile-call-action-btn" title="Call Mitra Emergency Line" aria-label="Call emergency support">
+                    <i data-lucide="phone" style="width: 18px; height: 18px;"></i>
+                </a>
                 <button id="mobileMenuBtn" class="mobile-hamburger" aria-label="Open mobile menu">
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-                        <line x1="3" y1="6" x2="21" y2="6"></line>
-                        <line x1="3" y1="12" x2="21" y2="12"></line>
-                        <line x1="3" y1="18" x2="21" y2="18"></line>
-                    </svg>
+                    <i data-lucide="menu" style="width: 22px; height: 22px;"></i>
                 </button>
             </div>
+        </div>
+
+        <!-- Mobile Prominent Search Bar (Docked right under header on mobile) -->
+        <div class="mobile-header-search-bar">
+            <div class="mobile-search-input-box">
+                <i data-lucide="search" style="width: 16px; height: 16px; color: #94A3B8;"></i>
+                <input type="text" id="mobileSearchInput" class="mobile-search-input" placeholder="Search 'Tap leakage', 'AC repair', 'Switch'..." autocomplete="off">
+                <button type="button" id="clearMobileSearchBtn" class="search-clear-btn" style="display: none;">&times;</button>
+            </div>
+            <div id="mobileSearchDropdown" class="search-dropdown-menu" style="display: none;"></div>
         </div>
     </header>
 
@@ -993,6 +1039,23 @@ function renderIcon(string $name, int $size = 20): string {
                     <?php endforeach; ?>
                 </div>
 
+                <!-- Transparent Visiting Fee Banner -->
+                <div class="visiting-charge-banner">
+                    <div class="visiting-charge-left">
+                        <div class="visiting-charge-icon-wrap">
+                            <i data-lucide="shield-check" style="width: 26px; height: 26px; color: #10B981;"></i>
+                        </div>
+                        <div>
+                            <h4 class="visiting-charge-title">Standard Doorstep Visiting &amp; Diagnostic Fee: ₹149</h4>
+                            <p class="visiting-charge-desc">Includes 45-minute on-site diagnostic inspection by a certified Mitra. <strong>100% Adjusted &amp; Waived</strong> against your final repair bill if the service exceeds ₹499!</p>
+                        </div>
+                    </div>
+                    <div class="visiting-charge-right">
+                        <span class="visiting-charge-badge"><i data-lucide="check" style="width: 14px; height: 14px;"></i> Upfront Rate Card</span>
+                        <span class="visiting-charge-badge"><i data-lucide="check" style="width: 14px; height: 14px;"></i> Pay After Satisfaction</span>
+                    </div>
+                </div>
+
                 <!-- Grid of Services -->
                 <div class="services-catalog-grid" id="servicesCatalogGrid">
                     <?php foreach ($SERVICES_DATA as $service): ?>
@@ -1620,19 +1683,70 @@ function renderIcon(string $name, int $size = 20): string {
     </div>
 
     <!-- =======================================================================
-         MOBILE STICKY BOTTOM ACTION BAR
+         LOCATION SELECTOR MODAL (MULTI-CITY METRO PICKER)
          ======================================================================= -->
-    <div class="mobile-bottom-bar" aria-label="Mobile Actions">
-        <div class="mobile-bottom-inner">
-            <a href="tel:<?= APP_PHONE; ?>" class="btn btn-outline-navy" style="flex: 1; padding: 0.65rem 0.5rem; border-radius: 12px;">
-                <?= renderIcon('phone', 16); ?>
-                <span>Call Help</span>
-            </a>
-            <button class="btn btn-primary trigger-booking-modal" data-service-cat="plumbing" style="flex: 2; padding: 0.65rem 1rem; border-radius: 12px;">
-                <span>Book a Service</span>
-            </button>
+    <div id="locationModalOverlay" class="modal-overlay location-modal-overlay" role="dialog" aria-modal="true" aria-label="Select City">
+        <div class="modal-container location-modal-container">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 0.6rem;">
+                    <i data-lucide="map-pin" style="color: #FF6600; width: 22px; height: 22px;"></i>
+                    <h3 class="modal-title">Select Your City</h3>
+                </div>
+                <button id="closeLocationModalBtn" class="modal-close-btn" aria-label="Close location modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p style="color: #64748B; font-size: 0.9rem; margin-bottom: 1.25rem;">
+                    KaamMitra delivers background-verified doorstep professionals across major Indian metros with 30-minute rapid arrival.
+                </p>
+                
+                <div class="location-search-wrap">
+                    <i data-lucide="search" style="width: 17px; height: 17px; color: #94A3B8;"></i>
+                    <input type="text" id="citySearchInput" class="location-search-input" placeholder="Type city or area name..." autocomplete="off">
+                </div>
+
+                <div class="cities-grid" id="citiesGrid">
+                    <?php foreach ($AVAILABLE_CITIES as $city): ?>
+                        <button type="button" class="city-select-btn <?= $city === 'Mumbai' ? 'active' : ''; ?>" data-city="<?= htmlspecialchars($city); ?>">
+                            <div class="city-select-info">
+                                <span class="city-name"><?= htmlspecialchars($city); ?></span>
+                                <span class="city-badge">⚡ 30m Dispatch</span>
+                            </div>
+                            <i data-lucide="check" class="city-check-icon" style="width: 18px; height: 18px;"></i>
+                        </button>
+                    <?php endforeach; ?>
+                </div>
+
+                <div style="margin-top: 1.5rem; padding: 0.9rem; background: #FFF5EE; border: 1px solid #FFEADB; border-radius: 10px; font-size: 0.85rem; color: #E65100; display: flex; align-items: center; gap: 0.6rem;">
+                    <i data-lucide="shield-check" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+                    <span>Prices, verified Mitras, and promotions are customized for your selected location.</span>
+                </div>
+            </div>
         </div>
     </div>
+
+    <!-- =======================================================================
+         MOBILE APP-LIKE FIXED BOTTOM NAVIGATION BAR
+         ======================================================================= -->
+    <nav class="mobile-app-bottom-bar" id="mobileAppBottomBar" aria-label="Mobile App Navigation">
+        <a href="#hero" class="app-tab active" data-tab="home" id="tabHome">
+            <i data-lucide="home"></i>
+            <span>Home</span>
+        </a>
+        <a href="#services" class="app-tab" data-tab="services" id="tabServices">
+            <i data-lucide="layout-grid"></i>
+            <span>Services</span>
+        </a>
+        <button type="button" class="app-tab app-tab-highlight trigger-booking-modal" data-service-cat="plumbing" data-tab="book" id="tabBook" aria-label="Book a Service">
+            <div class="tab-highlight-circle">
+                <i data-lucide="calendar-plus"></i>
+            </div>
+            <span>Book</span>
+        </button>
+        <button type="button" class="app-tab trigger-partner-modal" data-tab="partner" id="tabPartner" aria-label="Register as Partner">
+            <i data-lucide="user-check"></i>
+            <span>Partner</span>
+        </button>
+    </nav>
 
     <!-- Scripts -->
     <script>
