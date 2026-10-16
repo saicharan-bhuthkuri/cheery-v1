@@ -50,7 +50,8 @@
 }
 
 @media (max-width: 768px) {
-    .header-wrapper {
+    .header-wrapper,
+    .container {
         top: 10px;
         padding-left: 0.75rem;
         padding-right: 0.75rem;
@@ -141,7 +142,8 @@
 }
 
 @media (max-width: 420px) {
-    .header-wrapper {
+    .header-wrapper,
+    .container {
         padding-left: 0.5rem;
         padding-right: 0.5rem;
     }

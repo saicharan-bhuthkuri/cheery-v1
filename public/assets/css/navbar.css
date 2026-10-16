@@ -10,23 +10,27 @@
     position: sticky;
     top: 14px;
     z-index: 990;
-    padding-left: 1rem;
-    padding-right: 1rem;
+    width: 100%;
+    max-width: var(--container-width, 1260px);
+    margin: 0 auto;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
 }
 
 .site-navbar {
-    max-width: 1320px;
+    width: 100%;
+    max-width: 100%;
     margin: 0 auto;
     background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(226, 232, 240, 0.85);
     border-radius: var(--radius-full);
-    padding: 0.65rem 1.25rem;
+    padding: 0.5rem 1.35rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 1.25rem;
+    gap: 0.85rem;
     box-shadow: 0 10px 30px -5px rgba(9, 13, 22, 0.05);
     transition: all 0.3s ease;
 }
@@ -39,29 +43,29 @@
 .nav-brand-group {
     display: flex;
     align-items: center;
-    gap: 0.85rem;
+    gap: 0.75rem;
     flex-shrink: 0;
 }
 
 .brand-link {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: 0.6rem;
     flex-shrink: 0;
     white-space: nowrap;
     text-decoration: none;
 }
 
 .brand-mark {
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
     background: var(--brand-gradient);
     color: #FFFFFF;
     display: flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(255, 85, 0, 0.35);
+    box-shadow: 0 4px 12px rgba(255, 85, 0, 0.3);
     flex-shrink: 0;
 }
 
@@ -71,7 +75,7 @@
 }
 
 .brand-name {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     font-weight: 800;
     color: var(--brand-navy);
     line-height: 1.1;
@@ -93,38 +97,38 @@
 .nav-location-indicator {
     display: inline-flex;
     align-items: center;
-    gap: 0.75rem;
+    gap: 0.65rem;
     flex-shrink: 0;
     animation: fadeIn 0.3s ease;
 }
 
 .nav-location-sep {
     width: 1px;
-    height: 22px;
-    background: rgba(203, 213, 225, 0.9);
+    height: 20px;
+    background: rgba(203, 213, 225, 0.85);
     display: inline-block;
 }
 
 .nav-location-tag {
     display: inline-flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
     background: var(--bg-surface-alt, #F8FAFC);
     border: 1px solid var(--border-light, #E2E8F0);
     border-radius: var(--radius-full, 9999px);
-    padding: 0.3rem 0.65rem;
-    font-size: 0.78rem;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.76rem;
     font-weight: 600;
     color: var(--text-primary, #090D16);
     line-height: 1.2;
     white-space: nowrap;
-    max-width: 170px;
+    max-width: 155px;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .nav-location-pin-icon {
-    width: 14px;
-    height: 14px;
+    width: 13px;
+    height: 13px;
     color: var(--brand-coral, #FF5500);
     flex-shrink: 0;
 }
@@ -144,7 +148,7 @@
 .nav-menu-links {
     display: flex;
     align-items: center;
-    gap: 1.15rem;
+    gap: 0.95rem;
     list-style: none;
     white-space: nowrap;
     margin: 0;
@@ -155,7 +159,7 @@
     white-space: nowrap;
 }
 .nav-menu-links a {
-    font-size: 0.86rem;
+    font-size: 0.84rem;
     font-weight: 600;
     color: var(--text-secondary);
     transition: color 0.15s ease;
@@ -170,11 +174,13 @@
 .nav-actions {
     display: flex;
     align-items: center;
-    gap: 0.65rem;
+    gap: 0.55rem;
     white-space: nowrap;
     flex-shrink: 0;
 }
 .nav-partner-btn {
+    padding: 0.42rem 0.9rem !important;
+    font-size: 0.825rem !important;
     white-space: nowrap;
     text-decoration: none;
 }
@@ -186,6 +192,10 @@
 }
 
 /* Nav Book Button responsive text */
+.nav-book-btn {
+    padding: 0.42rem 1.05rem !important;
+    font-size: 0.835rem !important;
+}
 .nav-book-btn .btn-text-short {
     display: none;
 }
@@ -195,8 +205,8 @@
 
 /* Call Helpline Action Button */
 .mobile-call-action-btn {
-    width: 38px;
-    height: 38px;
+    width: 36px;
+    height: 36px;
     border-radius: 50%;
     background: var(--bg-surface-alt);
     border: 1px solid var(--border-light);
