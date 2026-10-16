@@ -1,0 +1,144 @@
+/**
+ * KaamMitra - Dashboard & Account Portal Stylesheet
+ * Customer and Provider dashboards, order tracking widgets, and status cards
+ */
+
+.dashboard-wrapper {
+    min-height: calc(100vh - 80px);
+    padding: 2.5rem 1.25rem 4rem;
+    background: var(--bg-page, #F8FAFC);
+}
+
+.dashboard-container {
+    max-width: 1220px;
+    margin: 0 auto;
+}
+
+.dashboard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.dashboard-title {
+    font-size: 1.75rem;
+    font-weight: 800;
+    color: var(--brand-navy, #090D16);
+    margin: 0 0 0.25rem;
+}
+
+.dashboard-subtitle {
+    font-size: 0.95rem;
+    color: var(--text-muted, #64748B);
+    margin: 0;
+}
+
+/* Stat & Metric Cards Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border-light, #E2E8F0);
+    border-radius: var(--radius-lg, 16px);
+    padding: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    box-shadow: 0 2px 8px rgba(9, 13, 22, 0.04);
+}
+
+.stat-icon-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: var(--radius-md, 12px);
+    background: var(--brand-coral-soft, #FFF4ED);
+    color: var(--brand-coral, #FF5500);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stat-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-num {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--brand-navy, #090D16);
+    line-height: 1.2;
+}
+
+.stat-label {
+    font-size: 0.825rem;
+    color: var(--text-muted, #64748B);
+    font-weight: 600;
+}
+
+/* Content Panels */
+.dashboard-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border-light, #E2E8F0);
+    border-radius: var(--radius-lg, 16px);
+    padding: 1.75rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 8px rgba(9, 13, 22, 0.04);
+}
+
+.dashboard-card-title {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--brand-navy, #090D16);
+    margin: 0 0 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Status Badges */
+.badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-full, 9999px);
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.badge-pending {
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #FDE68A;
+}
+
+.badge-approved,
+.badge-active {
+    background: #ECFDF5;
+    color: #065F46;
+    border: 1px solid #A7F3D0;
+}
+
+.badge-rejected,
+.badge-cancelled {
+    background: #FEE2E2;
+    color: #991B1B;
+    border: 1px solid #FECACA;
+}
+
+.badge-completed {
+    background: #EFF6FF;
+    color: #1E40AF;
+    border: 1px solid #BFDBFE;
+}

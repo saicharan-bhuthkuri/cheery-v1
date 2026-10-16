@@ -23,8 +23,15 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
     <meta name="description" content="KaamMitra delivers background-verified electricians, plumbers, appliance technicians, and cleaning specialists to your doorstep in 30 minutes.">
     <meta name="keywords" content="KaamMitra, home services, plumber, electrician, AC repair, carpentry, deep cleaning, Mumbai, Delhi">
     
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <link rel="stylesheet" href="assets/css/variables.css">
-    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/navbar.css">
+    <link rel="stylesheet" href="assets/css/forms.css">
+    <link rel="stylesheet" href="assets/css/landing.css">
+    <link rel="stylesheet" href="assets/css/responsive.css">
     <link rel="stylesheet" href="assets/css/dark-mode.css">
     <script src="assets/js/lucide.min.js"></script>
 </head>
@@ -64,7 +71,7 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                                     <input type="text" id="headerSearchInput" placeholder="Search 'tap repair', 'AC service'..." autocomplete="off">
                                     <button type="button" id="clearSearchBtn" class="search-clear-btn" style="display: none;">&times;</button>
                                 </div>
-                                <a href="auth/partner/login.php?redirect=index.php#services" class="btn btn-primary btn-sm hero-find-btn" style="text-decoration: none;">
+                                <a href="auth/customer/login.php?redirect=index.php#services" class="btn btn-primary btn-sm hero-find-btn" style="text-decoration: none;">
                                     <span class="find-btn-text">Explore Services</span>
                                     <i data-lucide="arrow-right" style="width: 15px; height: 15px;"></i>
                                 </a>
@@ -639,7 +646,7 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                                 <i data-lucide="phone-call" style="width: 18px; height: 18px;"></i>
                                 <span>Call <?= defined('APP_PHONE_DISPLAY') ? APP_PHONE_DISPLAY : '1800-KAAM-MITRA'; ?></span>
                             </a>
-                            <a href="auth/partner/partner-register.php" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.4); text-decoration: none; background: rgba(255,255,255,0.12); font-weight: 700;">
+                            <a href="auth/partner/register.php" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.4); text-decoration: none; background: rgba(255,255,255,0.12); font-weight: 700;">
                                 <i data-lucide="briefcase" style="width: 18px; height: 18px;"></i>
                                 <span>Join as a Service Provider</span>
                             </a>
@@ -813,10 +820,13 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
 
     <?php require __DIR__ . "/components/footer-main.php"; ?>
 
-    <!-- Global Data & Scripts -->
-    <script>
-        window.KM_SERVICES = <?= json_encode($SERVICES_DATA); ?>;
-    </script>
-    <script src="assets/js/main.js"></script>
+    <!-- Global Data & Modular Scripts -->
+    <script type="application/json" id="servicesDataJson"><?= json_encode($SERVICES_DATA); ?></script>
+    <script src="assets/js/core.js" defer></script>
+    <script src="assets/js/navbar.js" defer></script>
+    <script src="assets/js/location.js" defer></script>
+    <script src="assets/js/search.js" defer></script>
+    <script src="assets/js/services.js" defer></script>
+    <script src="assets/js/faq.js" defer></script>
 </body>
 </html>

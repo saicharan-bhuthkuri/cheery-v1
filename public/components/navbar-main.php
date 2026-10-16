@@ -44,22 +44,20 @@ $base = $base ?? (function_exists('getAppBasePath') ? getAppBasePath() : './');
                 <li><a href="<?= $base; ?>index.php#standard">Why Us</a></li>
                 <li><a href="<?= $base; ?>index.php#howItWorks">How It Works</a></li>
                 <li><a href="<?= $base; ?>index.php#reviews">Reviews</a></li>
-                <li><a href="<?= $base; ?>index.php#faq">FAQs</a></li>
-                <li><a href="<?= $base; ?>index.php#contact">Contact</a></li>
             </ul>
         </nav>
 
         <!-- Actions -->
         <div class="nav-actions">
-            <a href="<?= $base; ?>auth/partner/partner-register.php" class="btn btn-outline btn-sm nav-partner-btn" style="text-decoration: none;">
+            <a href="<?= $base; ?>auth/partner/register.php" class="btn btn-outline btn-sm nav-partner-btn" style="text-decoration: none;">
                 <i data-lucide="briefcase" style="width: 14px; height: 14px;"></i>
                 <span class="partner-btn-text-full">Join as a Service Provider</span>
                 <span class="partner-btn-text-short">Join as Provider</span>
             </a>
 
-            <a href="<?= $base; ?>auth/partner/login.php?redirect=index.php#services" class="btn btn-primary btn-sm nav-book-btn" style="text-decoration: none;">
-                <span class="btn-text-full">Book Services</span>
-                <span class="btn-text-short">Book</span>
+            <a href="<?= $base; ?>auth/customer/login.php?redirect=index.php#services" class="btn btn-primary btn-sm nav-book-btn" style="text-decoration: none;">
+                <span class="btn-text-full">Explore Services</span>
+                <span class="btn-text-short">Explore</span>
             </a>
 
             <a href="tel:<?= defined('APP_PHONE') ? APP_PHONE : '1800-522-6648'; ?>" class="mobile-call-action-btn" title="Call Mitra 24/7 Helpline: <?= defined('APP_PHONE_DISPLAY') ? APP_PHONE_DISPLAY : '1800-KAAM-MITRA'; ?>" aria-label="Call emergency support">
@@ -125,10 +123,10 @@ $base = $base ?? (function_exists('getAppBasePath') ? getAppBasePath() : './');
             </div>
 
             <div style="border-top: 1px solid #E2E8F0; padding-top: 1.5rem;">
-                <a href="<?= $base; ?>auth/partner/login.php?redirect=index.php#services" class="btn btn-primary" style="width: 100%; justify-content: center; margin-bottom: 0.75rem; text-decoration: none;">
+                <a href="<?= $base; ?>auth/customer/login.php?redirect=index.php#services" class="btn btn-primary" style="width: 100%; justify-content: center; margin-bottom: 0.75rem; text-decoration: none;">
                     <span>Explore Services</span>
                 </a>
-                <a href="<?= $base; ?>auth/partner/partner-register.php" class="btn btn-outline" style="width: 100%; justify-content: center; margin-bottom: 0.75rem; text-decoration: none;">
+                <a href="<?= $base; ?>auth/partner/register.php" class="btn btn-outline" style="width: 100%; justify-content: center; margin-bottom: 0.75rem; text-decoration: none;">
                     <i data-lucide="briefcase" style="width: 16px; height: 16px;"></i>
                     <span>Join as a Service Provider</span>
                 </a>

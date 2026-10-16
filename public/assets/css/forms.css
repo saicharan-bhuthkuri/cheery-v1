@@ -1,0 +1,276 @@
+/**
+ * KaamMitra - Form Controls, Input Elements & Action Buttons
+ * Centralized styles for forms, validation states, inputs, dropdowns, and button components
+ */
+
+/* ==========================================================================
+   BUTTONS SYSTEM
+   ========================================================================== */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.95rem;
+    line-height: 1.2;
+    border-radius: var(--radius-full);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    white-space: nowrap;
+    text-decoration: none;
+}
+.btn:active {
+    transform: scale(0.98);
+}
+
+.btn-primary {
+    background: var(--brand-coral, #FF5500);
+    color: #FFFFFF;
+    box-shadow: 0 4px 14px rgba(255, 85, 0, 0.3);
+}
+.btn-primary:hover {
+    background: var(--brand-coral-hover, #E04B00);
+    box-shadow: 0 6px 20px rgba(255, 85, 0, 0.45);
+    color: #FFFFFF;
+}
+
+.btn-outline {
+    background: transparent;
+    border-color: var(--border-light, #E2E8F0);
+    color: var(--text-primary, #090D16);
+}
+.btn-outline:hover {
+    border-color: var(--brand-coral, #FF5500);
+    color: var(--brand-coral, #FF5500);
+    background: var(--brand-coral-soft, #FFF4ED);
+}
+
+.btn-subtle {
+    background: var(--bg-surface-alt, #F1F5F9);
+    border-color: transparent;
+    color: var(--text-primary, #090D16);
+}
+.btn-subtle:hover {
+    background: #E2E8F0;
+    color: var(--text-primary, #090D16);
+}
+
+.btn-ghost {
+    background: transparent;
+    border-color: transparent;
+    color: var(--text-secondary, #475569);
+}
+.btn-ghost:hover {
+    color: var(--brand-coral, #FF5500);
+    background: var(--brand-coral-soft, #FFF4ED);
+}
+
+/* Button Sizes */
+.btn-sm {
+    padding: 0.45rem 1rem;
+    font-size: 0.825rem;
+    border-radius: var(--radius-full);
+}
+
+.btn-md {
+    padding: 0.65rem 1.25rem;
+    font-size: 0.9rem;
+}
+
+.btn-lg {
+    padding: 0.85rem 1.75rem;
+    font-size: 1rem;
+    border-radius: var(--radius-full);
+}
+
+.btn-full {
+    width: 100%;
+    justify-content: center;
+    padding: 0.85rem;
+    font-size: 1rem;
+    font-weight: 700;
+    border-radius: var(--radius-md, 12px);
+}
+
+.btn[disabled],
+.btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+    pointer-events: none;
+    box-shadow: none !important;
+}
+
+/* ==========================================================================
+   FORM GROUPS & LABELS
+   ========================================================================== */
+.form-group {
+    margin-bottom: 1.25rem;
+}
+
+.form-label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-primary, #090D16);
+    margin-bottom: 0.4rem;
+}
+
+.form-hint {
+    font-size: 0.78rem;
+    color: var(--text-muted, #64748B);
+    margin-top: 0.25rem;
+    display: block;
+}
+
+/* ==========================================================================
+   INPUTS & TEXT FIELDS
+   ========================================================================== */
+.input-icon-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.input-icon-left {
+    position: absolute;
+    left: 1rem;
+    color: var(--text-muted, #94A3B8);
+    display: flex;
+    align-items: center;
+    pointer-events: none;
+}
+
+.input-control {
+    width: 100%;
+    padding: 0.75rem 1rem 0.75rem 2.75rem;
+    font-size: 0.95rem;
+    font-family: inherit;
+    border: 1.5px solid var(--border-light, #E2E8F0);
+    border-radius: var(--radius-md, 12px);
+    background: var(--bg-surface-alt, #F8FAFC);
+    color: var(--text-primary, #090D16);
+    outline: none;
+    transition: all 0.2s ease;
+}
+
+.input-control:focus {
+    border-color: var(--brand-coral, #FF5500);
+    background: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(255, 85, 0, 0.12);
+}
+
+.input-control.is-invalid {
+    border-color: #EF4444;
+    background: #FEF2F2;
+}
+
+/* Select Control */
+.select-control {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 0.92rem;
+    font-family: inherit;
+    border: 1.5px solid var(--border-light, #E2E8F0);
+    border-radius: var(--radius-md, 12px);
+    background: var(--bg-surface-alt, #F8FAFC);
+    color: var(--text-primary, #090D16);
+    outline: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.select-control:focus {
+    border-color: var(--brand-coral, #FF5500);
+    background: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(255, 85, 0, 0.12);
+}
+
+/* Password Toggle Action */
+.password-toggle-btn {
+    position: absolute;
+    right: 0.85rem;
+    background: none;
+    border: none;
+    color: var(--text-muted, #94A3B8);
+    cursor: pointer;
+    padding: 0.35rem;
+    display: flex;
+    align-items: center;
+    transition: color 0.15s ease;
+}
+.password-toggle-btn:hover {
+    color: var(--text-primary, #090D16);
+}
+
+/* ==========================================================================
+   TERMS & CONDITIONS CHECKBOX CONTAINER
+   ========================================================================== */
+.checkbox-container {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.65rem;
+    margin: 1.25rem 0 1.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    color: var(--text-secondary, #334155);
+}
+
+.checkbox-container input[type="checkbox"] {
+    margin-top: 0.15rem;
+    width: 17px;
+    height: 17px;
+    accent-color: var(--brand-coral, #FF5500);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+/* ==========================================================================
+   VALIDATION ALERTS & NOTICES
+   ========================================================================== */
+.field-error-msg {
+    color: #DC2626;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 0.35rem;
+    display: block;
+}
+
+.alert-box {
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius-md, 12px);
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.alert-error {
+    background: #FEF2F2;
+    color: #991B1B;
+    border: 1px solid #FECACA;
+}
+
+.alert-success {
+    background: #ECFDF5;
+    color: #065F46;
+    border: 1px solid #A7F3D0;
+}
+
+.alert-warning,
+.alert-pending {
+    background: #FFFBEB;
+    color: #92400E;
+    border: 1px solid #FDE68A;
+}
+
+.alert-rejected {
+    background: #FEF2F2;
+    color: #991B1B;
+    border: 1px solid #FECACA;
+}
