@@ -44,6 +44,7 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                     <li><a href="<?= $base; ?>index.php#standard">The KaamMitra Standard</a></li>
                     <li><a href="<?= $base; ?>index.php#pledge">Transparent Pricing</a></li>
                     <li><a href="<?= $base; ?>index.php#howItWorks">How It Works</a></li>
+                    <li><a href="<?= $base; ?>auth/partner/partner-register.php" style="color: var(--brand-coral, #FF5500); font-weight: 700;">Join as a Service Provider</a></li>
                     <li><a href="<?= $base; ?>index.php#reviews">Verified Reviews</a></li>
                     <li><a href="<?= $base; ?>index.php#faq">Frequently Asked Questions</a></li>
                     <li><a href="<?= $base; ?>index.php#contact">24/7 Helpline Support</a></li>

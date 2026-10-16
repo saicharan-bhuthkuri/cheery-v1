@@ -131,7 +131,8 @@ function initRealTimeLocation() {
                 queryParams.set('timestamp', params.timestamp);
             }
 
-            const res = await fetch('api/detect-location.php?' + queryParams.toString(), {
+            const apiPath = (window.KM_BASE_PATH || '') + 'api/detect-location.php?' + queryParams.toString();
+            const res = await fetch(apiPath, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });

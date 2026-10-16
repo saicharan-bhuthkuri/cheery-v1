@@ -64,8 +64,8 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                                     <input type="text" id="headerSearchInput" placeholder="Search 'tap repair', 'AC service'..." autocomplete="off">
                                     <button type="button" id="clearSearchBtn" class="search-clear-btn" style="display: none;">&times;</button>
                                 </div>
-                                <a href="#services" class="btn btn-primary btn-sm hero-find-btn" style="text-decoration: none;">
-                                    <span class="find-btn-text">Find Mitra</span>
+                                <a href="auth/partner/login.php?redirect=index.php#services" class="btn btn-primary btn-sm hero-find-btn" style="text-decoration: none;">
+                                    <span class="find-btn-text">Explore Services</span>
                                     <i data-lucide="arrow-right" style="width: 15px; height: 15px;"></i>
                                 </a>
                                 <div id="headerSearchDropdown" class="search-dropdown-menu" style="display: none;"></div>
@@ -639,7 +639,11 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                                 <i data-lucide="phone-call" style="width: 18px; height: 18px;"></i>
                                 <span>Call <?= defined('APP_PHONE_DISPLAY') ? APP_PHONE_DISPLAY : '1800-KAAM-MITRA'; ?></span>
                             </a>
-                            <a href="mailto:<?= defined('APP_EMAIL') ? APP_EMAIL : 'support@kaammitra.in'; ?>" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.35); text-decoration: none; background: rgba(255,255,255,0.06);">
+                            <a href="auth/partner/partner-register.php" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.4); text-decoration: none; background: rgba(255,255,255,0.12); font-weight: 700;">
+                                <i data-lucide="briefcase" style="width: 18px; height: 18px;"></i>
+                                <span>Join as a Service Provider</span>
+                            </a>
+                            <a href="mailto:<?= defined('APP_EMAIL') ? APP_EMAIL : 'support@kaammitra.in'; ?>" class="btn btn-subtle btn-lg" style="color: rgba(255,255,255,0.85); text-decoration: none;">
                                 <i data-lucide="mail" style="width: 18px; height: 18px;"></i>
                                 <span>Email Support</span>
                             </a>
