@@ -17,18 +17,6 @@ if (!function_exists('getAppBasePath')) {
     }
 }
 
-$AVAILABLE_CITIES = [
-    'Delhi NCR',
-    'Mumbai',
-    'Bengaluru',
-    'Pune',
-    'Hyderabad',
-    'Chennai',
-    'Kolkata',
-    'Ahmedabad',
-    'Jaipur',
-    'Chandigarh'
-];
 
 $PLATFORM_STATS = [
     ['count' => '50,000+', 'label' => 'Happy Homes Served', 'icon' => 'home'],

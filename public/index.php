@@ -42,9 +42,9 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                     <!-- Left Bento Card: Headline, Quick Booking & Chips -->
                     <div class="hero-main-card">
                         <div>
-                            <div class="hero-eyebrow-pill">
-                                <span class="pulse-indicator"></span>
-                                <span>18 Verified Mitras Active Near You</span>
+                            <div class="hero-eyebrow-pill" id="locationStatusPill">
+                                <span class="pulse-indicator" id="locationPulse"></span>
+                                <span id="locationBadgeText">On-Demand Doorstep Repairs • 30-Min Rapid Dispatch</span>
                             </div>
 
                             <h1 class="hero-headline">
@@ -108,7 +108,7 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                                 <span>Aadhaar &amp; Police Background Verified</span>
                             </div>
                             <h3 class="hero-pro-name">Rajesh Kumar</h3>
-                            <p class="hero-pro-desc">Master Electrician &amp; HVAC Pro • 4.95 ★ (1,250 jobs completed in Powai)</p>
+                            <p class="hero-pro-desc" id="heroProDesc">Master Electrician &amp; HVAC Pro • 4.95 ★ (1,250+ verified doorstep jobs completed)</p>
 
                             <div class="hero-floating-stat-box">
                                 <div class="stat-mini-item">
@@ -384,6 +384,20 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                     'painting' => 'assets/images/wall-painting.jpg'
                 ];
                 ?>
+                <!-- Live Service Availability Banner -->
+                <div id="serviceCoverageBanner" class="service-coverage-banner" style="display: none;">
+                    <div class="service-coverage-inner">
+                        <div class="service-coverage-left">
+                            <span class="coverage-dot" id="coverageDot"></span>
+                            <div>
+                                <strong id="coverageTitle" class="coverage-title">Checking service availability in your area...</strong>
+                                <span id="coverageSubtitle" class="coverage-sub">Doorstep dispatch available across supported metro hubs.</span>
+                            </div>
+                        </div>
+                        <div class="service-coverage-right" id="coverageMeta"></div>
+                    </div>
+                </div>
+
                 <div class="catalog-tabs-wrapper">
                     <button type="button" class="catalog-tab-chip active category-tab-btn" data-category="all">
                         <span>All Categories</span>

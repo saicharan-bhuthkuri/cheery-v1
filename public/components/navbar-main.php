@@ -13,7 +13,7 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
 <!-- Floating Island Navbar -->
 <div class="header-wrapper">
     <header class="site-navbar" id="siteHeader">
-        <!-- Brand -->
+        <!-- Brand & Real-Time Location -->
         <div class="nav-brand-group">
             <a href="<?= $base; ?>index.php" class="brand-link" aria-label="KaamMitra Home">
                 <div class="brand-mark">
@@ -25,12 +25,14 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                 </div>
             </a>
 
-            <!-- Location Selector Pill -->
-            <button type="button" class="nav-location-pill trigger-location-modal" id="navLocationBtn" aria-label="Choose service city">
-                <span class="location-live-dot"></span>
-                <span id="navCityText">Mumbai, MH</span>
-                <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
-            </button>
+            <!-- Compact Real-Time Location Indicator beside logo -->
+            <div class="nav-location-indicator" id="navLocationIndicator" style="display: none;" aria-live="polite">
+                <span class="nav-location-sep" aria-hidden="true"></span>
+                <div class="nav-location-tag">
+                    <i data-lucide="map-pin" class="nav-location-pin-icon" aria-hidden="true"></i>
+                    <span class="nav-location-name" id="navLocationName"></span>
+                </div>
+            </div>
         </div>
 
         <!-- Navigation Menu -->
@@ -79,11 +81,7 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
         </div>
         
         <div class="modal-body" style="padding: 1.5rem;">
-            <button type="button" class="nav-location-pill trigger-location-modal" style="width: 100%; justify-content: center; margin-bottom: 1.5rem;">
-                <span class="location-live-dot"></span>
-                <span id="navMobileCityText">Mumbai, MH</span>
-                <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
-            </button>
+
 
             <div style="display: flex; flex-direction: column; gap: 0.85rem; margin-bottom: 2rem;">
                 <a href="<?= $base; ?>index.php#services" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">

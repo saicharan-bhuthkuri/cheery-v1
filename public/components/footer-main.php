@@ -10,10 +10,6 @@ if (!defined('APP_NAME')) {
 
 $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
 
-global $AVAILABLE_CITIES;
-if (empty($AVAILABLE_CITIES)) {
-    $AVAILABLE_CITIES = ['Delhi NCR', 'Mumbai', 'Bengaluru', 'Pune', 'Hyderabad', 'Chennai', 'Kolkata', 'Ahmedabad', 'Jaipur', 'Chandigarh'];
-}
 ?>
 <!-- Footer -->
 <footer class="site-footer">
@@ -55,11 +51,14 @@ if (empty($AVAILABLE_CITIES)) {
             </div>
 
             <div>
-                <h4 class="footer-heading">Cities Served</h4>
+                <h4 class="footer-heading">Coverage</h4>
                 <ul class="footer-links-list">
-                    <?php foreach (array_slice($AVAILABLE_CITIES, 0, 6) as $c): ?>
-                        <li><a href="javascript:void(0)" class="trigger-location-modal"><?= htmlspecialchars($c); ?></a></li>
-                    <?php endforeach; ?>
+                    <li><span style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Real-Time GPS Dispatch</span></li>
+                    <li><span style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Live Provider Availability</span></li>
+                    <li><span style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">30-Minute Doorstep Reach</span></li>
+                    <li><span style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">Verified Background Checks</span></li>
+                    <li><span style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">30-Day Work Warranty</span></li>
+                    <li><span style="color: rgba(255,255,255,0.7); font-size: 0.9rem;">24/7 Rapid Emergency Response</span></li>
                 </ul>
             </div>
         </div>
@@ -74,41 +73,6 @@ if (empty($AVAILABLE_CITIES)) {
         </div>
     </div>
 </footer>
-
-<!-- Location Selector Modal -->
-<div id="locationModalOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Select City">
-    <div class="modal-container" style="max-width: 540px;">
-        <div class="modal-header">
-            <div style="display: flex; align-items: center; gap: 0.6rem;">
-                <i data-lucide="map-pin" style="color: #FF5500; width: 22px; height: 22px;"></i>
-                <h3 class="modal-title">Select Your Service City</h3>
-            </div>
-            <button id="closeLocationModalBtn" class="modal-close-btn" aria-label="Close location modal">&times;</button>
-        </div>
-        <div class="modal-body">
-            <p style="color: #64748B; font-size: 0.9rem; margin-bottom: 1.25rem;">
-                KaamMitra operates dedicated rapid-dispatch hubs across major Indian metros with 30-minute doorstep arrival.
-            </p>
-            
-            <div class="location-search-wrap" style="position: relative; margin-bottom: 1.25rem;">
-                <i data-lucide="search" style="width: 17px; height: 17px; color: #94A3B8; position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);"></i>
-                <input type="text" id="citySearchInput" class="form-control" style="padding-left: 2.75rem;" placeholder="Search your city name..." autocomplete="off">
-            </div>
-
-            <div class="cities-grid" id="citiesGrid">
-                <?php foreach ($AVAILABLE_CITIES as $city): ?>
-                    <button type="button" class="city-select-btn <?= $city === 'Mumbai' ? 'active' : ''; ?>" data-city="<?= htmlspecialchars($city); ?>">
-                        <div class="city-select-info">
-                            <span class="city-name"><?= htmlspecialchars($city); ?></span>
-                            <span class="city-badge">⚡ 30m Dispatch</span>
-                        </div>
-                        <i data-lucide="check" class="city-check-icon" style="width: 18px; height: 18px;"></i>
-                    </button>
-                <?php endforeach; ?>
-            </div>
-        </div>
-    </div>
-</div>
 
 <!-- Mobile App-like Bottom Navigation -->
 <nav class="mobile-app-bottom-bar" id="mobileAppBottomBar" aria-label="Mobile Navigation">
