@@ -1,5 +1,6 @@
 /**
- * KaamMitra - Modern Marketplace & App-First Architecture Controller
+ * KaamMitra - Modern Marketplace Landing Page Controller
+ * Handles header, location selector, instant service search, catalog filtering, drawers & FAQs
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -50,7 +51,7 @@ function initLocationPicker() {
     // Restore saved city from localStorage
     const savedCity = localStorage.getItem('km_user_city');
     if (savedCity && navCityText) {
-        navCityText.textContent = savedCity + (savedCity.includes(',') ? '' : ', India');
+        navCityText.textContent = savedCity + (savedCity.includes(',') ? '' : ', MH');
         cityButtons.forEach(btn => {
             if (btn.getAttribute('data-city') === savedCity) {
                 btn.classList.add('active');
@@ -165,7 +166,6 @@ function initLiveSearch() {
             if (query.length < 2) {
                 dropdown.style.display = 'none';
                 dropdown.innerHTML = '';
-                // If emptied, reset catalog filter
                 if (query.length === 0) {
                     filterServicesByCategory('all');
                 }
@@ -176,7 +176,6 @@ function initLiveSearch() {
             const matches = [];
 
             services.forEach(service => {
-                // Match parent title/subtitle
                 if (service.title.toLowerCase().includes(query) || service.subtitle.toLowerCase().includes(query)) {
                     matches.push({
                         title: service.title,
@@ -188,7 +187,6 @@ function initLiveSearch() {
                     });
                 }
 
-                // Match subservices
                 if (Array.isArray(service.sub_services)) {
                     service.sub_services.forEach(sub => {
                         if (sub.name.toLowerCase().includes(query)) {
@@ -228,7 +226,7 @@ function initLiveSearch() {
             dropdown.innerHTML = `
                 <div style="padding: 1.25rem; text-align: center; color: #64748B; font-size: 0.88rem;">
                     <p style="margin-bottom: 0.5rem;">No exact service matches for <strong>"${escapeHtml(query)}"</strong></p>
-                    <a href="#services" style="color: #FF6600; font-weight: 600;" onclick="this.closest('.search-dropdown-menu').style.display='none';">Browse All Rate Cards &rarr;</a>
+                    <a href="#services" style="color: #FF5500; font-weight: 600;" onclick="this.closest('.search-dropdown-menu').style.display='none';">Browse All Rate Cards &rarr;</a>
                 </div>
             `;
             dropdown.style.display = 'block';
@@ -252,7 +250,7 @@ function initLiveSearch() {
                     </div>
                     <div class="search-sug-right">
                         <span class="search-sug-price">₹${item.price}</span>
-                        <button type="button" class="search-sug-book-btn">Book</button>
+                        <span class="search-sug-book-btn">View</span>
                     </div>
                 </div>
             `;
@@ -265,15 +263,15 @@ function initLiveSearch() {
             lucide.createIcons({ root: dropdown });
         }
 
-        // Attach booking triggers
+        // Navigate to category & catalog section on click
         dropdown.querySelectorAll('.search-suggestion-item').forEach(el => {
             el.addEventListener('click', () => {
                 const cat = el.getAttribute('data-cat');
-                const sub = el.getAttribute('data-sub');
-                const price = el.getAttribute('data-price');
                 dropdown.style.display = 'none';
-                if (window.openBookingModal) {
-                    window.openBookingModal(cat, sub, price);
+                filterServicesByCategory(cat);
+                const servicesSection = document.getElementById('services');
+                if (servicesSection) {
+                    servicesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 }
             });
         });
@@ -308,7 +306,7 @@ function initLiveSearch() {
 
 /* ==========================================================================
    4. SERVICE CATEGORY TABS & FILTERING
-   ========================================================================= */
+   ========================================================================== */
 function filterServicesByCategory(category) {
     const tabButtons = document.querySelectorAll('.category-tab-btn');
     const catalogCards = document.querySelectorAll('.catalog-card');
@@ -462,12 +460,18 @@ function initMobileBottomBar() {
     const tabs = document.querySelectorAll('.mobile-app-bottom-bar .app-tab');
     if (!tabs.length) return;
 
-    // Track scroll to update active tab
-    window.addEventListener('scroll', () => {
-        const scrollPos = window.scrollY;
-        const servicesSection = document.getElementById('services');
+    const servicesSec = document.getElementById('services');
+    const pledgeSec = document.getElementById('pledge');
+    const reviewsSec = document.getElementById('reviews');
 
-        if (servicesSection && scrollPos >= servicesSection.offsetTop - 150) {
+    window.addEventListener('scroll', () => {
+        const scrollPos = window.scrollY + 200;
+
+        if (reviewsSec && scrollPos >= reviewsSec.offsetTop) {
+            setActiveTab('reviews');
+        } else if (pledgeSec && scrollPos >= pledgeSec.offsetTop && (!servicesSec || scrollPos < servicesSec.offsetTop)) {
+            setActiveTab('pledge');
+        } else if (servicesSec && scrollPos >= servicesSec.offsetTop) {
             setActiveTab('services');
         } else {
             setActiveTab('home');
@@ -478,7 +482,7 @@ function initMobileBottomBar() {
         tabs.forEach(tab => {
             if (tab.getAttribute('data-tab') === tabName) {
                 tab.classList.add('active');
-            } else if (tab.getAttribute('data-tab') !== 'book') {
+            } else {
                 tab.classList.remove('active');
             }
         });
@@ -514,7 +518,7 @@ function highlightMatch(text, query) {
     const escapedText = escapeHtml(text);
     const escapedQuery = escapeHtml(query);
     const regex = new RegExp(`(${escapedQuery})`, 'gi');
-    return escapedText.replace(regex, '<span style="color: #FF6600; font-weight: 700;">$1</span>');
+    return escapedText.replace(regex, '<span style="color: #FF5500; font-weight: 700;">$1</span>');
 }
 
 function capitalize(str) {

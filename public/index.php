@@ -1,25 +1,17 @@
 <?php
 /**
- * KaamMitra Next - Modern Marketplace Landing Page
- * Completely redesigned visual architecture & app-first experience
+ * KaamMitra - Modern Marketplace Landing Page
+ * Completely focused public showcase for on-demand home repairs & services
  */
 
-require_once __DIR__ . '/includes/config.php';
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/data/services.php';
 require_once __DIR__ . '/data/features.php';
 require_once __DIR__ . '/data/testimonials.php';
 require_once __DIR__ . '/data/faqs.php';
 require_once __DIR__ . '/components/icons.php';
 
-$base = getAppBasePath();
-
-$isLoggedIn = isCustomerLoggedIn();
-$customer = $isLoggedIn ? getLoggedInCustomer() : null;
-
-$isPartnerLogged = isPartnerLoggedIn();
-$partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
-
+$base = function_exists('getAppBasePath') ? getAppBasePath() : './';
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -33,6 +25,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
     
     <link rel="stylesheet" href="assets/css/variables.css">
     <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/dark-mode.css">
     <script src="assets/js/lucide.min.js"></script>
 </head>
 <body>
@@ -71,7 +64,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                     <input type="text" id="headerSearchInput" placeholder="Search 'tap repair', 'AC service'..." autocomplete="off">
                                     <button type="button" id="clearSearchBtn" class="search-clear-btn" style="display: none;">&times;</button>
                                 </div>
-                                <a href="<?= $isLoggedIn ? 'book.php?service=plumbing' : 'login.php?redirect=' . urlencode('book.php?service=plumbing'); ?>" class="btn btn-primary btn-sm hero-find-btn" style="text-decoration: none;">
+                                <a href="#services" class="btn btn-primary btn-sm hero-find-btn" style="text-decoration: none;">
                                     <span class="find-btn-text">Find Mitra</span>
                                     <i data-lucide="arrow-right" style="width: 15px; height: 15px;"></i>
                                 </a>
@@ -240,7 +233,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                     <span class="bento-price-prefix">Starts at</span>
                                     <span class="bento-price">₹499</span>
                                 </div>
-                                <a href="book.php?service=appliances&sub=<?= urlencode('AC Jet Pump Foam Servicing'); ?>&price=499" class="bento-book-btn">+ Book</a>
+                                <button type="button" class="bento-book-btn trigger-category-filter" data-cat="appliances">Explore Service</button>
                             </div>
                         </div>
                     </div>
@@ -264,7 +257,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                     <span class="bento-price-prefix">Starts at</span>
                                     <span class="bento-price">₹199</span>
                                 </div>
-                                <a href="book.php?service=plumbing&sub=<?= urlencode('Tap Repair / Replacement'); ?>&price=199" class="bento-book-btn">+ Book</a>
+                                <button type="button" class="bento-book-btn trigger-category-filter" data-cat="plumbing">Explore Service</button>
                             </div>
                         </div>
                     </div>
@@ -288,7 +281,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                     <span class="bento-price-prefix">Starts at</span>
                                     <span class="bento-price">₹399</span>
                                 </div>
-                                <a href="book.php?service=cleaning&sub=<?= urlencode('Intense Bathroom Deep Cleaning'); ?>&price=399" class="bento-book-btn">+ Book</a>
+                                <button type="button" class="bento-book-btn trigger-category-filter" data-cat="cleaning">Explore Service</button>
                             </div>
                         </div>
                     </div>
@@ -312,7 +305,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                     <span class="bento-price-prefix">Starts at</span>
                                     <span class="bento-price">₹149</span>
                                 </div>
-                                <a href="book.php?service=electrical&sub=<?= urlencode('Switchboard / Socket Repair'); ?>&price=149" class="bento-book-btn">+ Book</a>
+                                <button type="button" class="bento-book-btn trigger-category-filter" data-cat="electrical">Explore Service</button>
                             </div>
                         </div>
                     </div>
@@ -462,7 +455,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                 <div class="catalog-subservices-section">
                                     <button type="button" class="rate-card-toggle-btn" aria-expanded="false">
                                         <div style="display: flex; align-items: center; gap: 0.45rem;">
-                                            <i data-lucide="receipt" style="width: 14px; height: 14px; color: var(--brand-coral);"></i>
+                                            <i data-lucide="receipt" style="width: 14px; height: 14px; color: var(--brand-coral, #FF5500);"></i>
                                             <span>View Rate Card (<?= count($service['sub_services']); ?> options)</span>
                                         </div>
                                         <i data-lucide="chevron-down" class="rate-card-chevron" style="width: 15px; height: 15px;"></i>
@@ -478,8 +471,8 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                                 </div>
                                                 <div class="rate-card-item-action">
                                                     <span class="rate-card-item-price">₹<?= $sub['price']; ?></span>
-                                                    <a href="book.php?service=<?= urlencode($service['category']); ?>&sub=<?= urlencode($sub['name']); ?>&price=<?= urlencode($sub['price']); ?>" class="rate-card-book-btn">
-                                                        + Book
+                                                    <a href="tel:<?= APP_PHONE; ?>" class="rate-card-book-btn" title="Call Helpline to Book" style="text-decoration: none;">
+                                                        Book
                                                     </a>
                                                 </div>
                                             </div>
@@ -496,9 +489,9 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                     <span class="catalog-price-label">Visiting / Inspection</span>
                                     <span class="catalog-price-value">₹<?= $service['starting_price']; ?></span>
                                 </div>
-                                <a href="book.php?service=<?= urlencode($service['category']); ?>&sub=<?= urlencode($service['sub_services'][0]['name'] ?? $service['title']); ?>&price=<?= urlencode($service['sub_services'][0]['price'] ?? $service['starting_price']); ?>" class="btn btn-primary btn-sm" style="text-decoration: none;">
-                                    <span>Book Service</span>
-                                    <i data-lucide="arrow-right" style="width: 14px; height: 14px;"></i>
+                                <a href="tel:<?= APP_PHONE; ?>" class="btn btn-primary btn-sm" style="text-decoration: none;">
+                                    <span>Book via Helpline</span>
+                                    <i data-lucide="phone" style="width: 14px; height: 14px;"></i>
                                 </a>
                             </div>
                         </div>
@@ -594,65 +587,63 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
         </section>
 
         <!-- ===================================================================
-             PARTNER ECOSYSTEM BANNER
+             CONTACT & 24/7 HELPLINE ASSISTANCE SECTION
              =================================================================== -->
-        <section class="section" id="partnerSection" style="padding-top: 1rem;">
+        <section class="section" id="contact" style="padding-top: 1rem;">
             <div class="container">
                 <div class="partner-editorial-card">
                     <div>
-                        <span class="section-badge" style="background: rgba(255, 85, 0, 0.2); border-color: rgba(255, 85, 0, 0.4); color: #FF7D26;">For Service Professionals</span>
+                        <span class="section-badge" style="background: rgba(255, 85, 0, 0.2); border-color: rgba(255, 85, 0, 0.4); color: #FF7D26;">24/7 Doorstep Assistance</span>
                         <h2 class="partner-editorial-title">
-                            Earn up to <span>₹48,000/month</span> as a Verified KaamMitra Partner
+                            Need Fast Assistance? <span>Call Our 24/7 Helpline</span>
                         </h2>
                         <p class="partner-editorial-desc">
-                            Join over 3,500+ master electricians, plumbers, carpenters, and technicians. Get guaranteed daily bookings, free insurance, and direct weekly bank payouts.
+                            Speak directly with our centralized customer support desk for express technician dispatch, custom repair estimates, or transparent rate quotes across all 10 serviced metros.
                         </p>
 
                         <div class="partner-perks-row">
                             <div class="perk-pill">
-                                <i data-lucide="check" style="width: 18px; height: 18px;"></i>
-                                <span>0% Commission for First 30 Days</span>
+                                <i data-lucide="phone" style="width: 18px; height: 18px;"></i>
+                                <span>Toll-Free Helpline: <?= defined('APP_PHONE_DISPLAY') ? APP_PHONE_DISPLAY : '1800-KAAM-MITRA'; ?></span>
                             </div>
                             <div class="perk-pill">
                                 <i data-lucide="check" style="width: 18px; height: 18px;"></i>
-                                <span>Free Branded Toolkit &amp; Uniform</span>
+                                <span>Zero Advance • Pay After Service</span>
                             </div>
                             <div class="perk-pill">
-                                <i data-lucide="check" style="width: 18px; height: 18px;"></i>
-                                <span>Weekly Direct Bank Payouts</span>
+                                <i data-lucide="clock" style="width: 18px; height: 18px;"></i>
+                                <span>⚡ 30-Minute Guaranteed Doorstep Arrival</span>
                             </div>
                             <div class="perk-pill">
-                                <i data-lucide="check" style="width: 18px; height: 18px;"></i>
-                                <span>Accidental Insurance Coverage</span>
+                                <i data-lucide="shield-check" style="width: 18px; height: 18px;"></i>
+                                <span>100% Background-Verified Mitras</span>
                             </div>
                         </div>
 
                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                            <a href="partner/register.php" class="btn btn-primary btn-lg" style="text-decoration: none;">
-                                <span>Register as Partner Now</span>
-                                <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
+                            <a href="tel:<?= defined('APP_PHONE') ? APP_PHONE : '1800-522-6648'; ?>" class="btn btn-primary btn-lg" style="text-decoration: none;">
+                                <i data-lucide="phone-call" style="width: 18px; height: 18px;"></i>
+                                <span>Call <?= defined('APP_PHONE_DISPLAY') ? APP_PHONE_DISPLAY : '1800-KAAM-MITRA'; ?></span>
                             </a>
-                            <a href="partner/login.php" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.35); text-decoration: none; background: rgba(255,255,255,0.06);">
-                                <span>Partner Login</span>
+                            <a href="mailto:<?= defined('APP_EMAIL') ? APP_EMAIL : 'support@kaammitra.in'; ?>" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.35); text-decoration: none; background: rgba(255,255,255,0.06);">
+                                <i data-lucide="mail" style="width: 18px; height: 18px;"></i>
+                                <span>Email Support</span>
                             </a>
                         </div>
                     </div>
 
                     <div class="partner-earnings-widget">
-                        <div class="earnings-label">Average Monthly Earnings</div>
-                        <div class="earnings-amount">₹48,500</div>
-                        <div class="earnings-sub">✓ Top 15% earn ₹65,000+ with bonuses</div>
+                        <div class="earnings-label">Support Response Time</div>
+                        <div class="earnings-amount">&lt; 60 Secs</div>
+                        <div class="earnings-sub">✓ 24 Hours • 7 Days a Week • Zero Waiting</div>
                         <p style="font-size: 0.825rem; color: rgba(255, 255, 255, 0.65); line-height: 1.5;">
-                            Simple 2-minute registration. Our hub coordinator will call you to verify your Aadhaar within 4 business hours.
+                            Direct doorstep technician dispatch across Delhi NCR, Mumbai, Bengaluru, Pune, Hyderabad, Chennai, Kolkata, Ahmedabad, Jaipur, and Chandigarh.
                         </p>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- ===================================================================
-             TESTIMONIALS
-             =================================================================== -->
         <!-- ===================================================================
              TESTIMONIALS & TRUST EXPERIENCES
              =================================================================== -->
@@ -684,7 +675,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
 
                     <div class="trust-bar-item">
                         <div class="trust-bar-stat">
-                            <i data-lucide="shield-check" style="width: 20px; height: 20px; color: var(--accent-emerald);"></i>
+                            <i data-lucide="shield-check" style="width: 20px; height: 20px; color: var(--accent-emerald, #10B981);"></i>
                             <span class="stat-num">100%</span>
                         </div>
                         <span class="trust-bar-sub">Police &amp; Aadhaar Background Verified</span>
@@ -694,7 +685,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
 
                     <div class="trust-bar-item">
                         <div class="trust-bar-stat">
-                            <i data-lucide="clock" style="width: 20px; height: 20px; color: var(--brand-coral);"></i>
+                            <i data-lucide="clock" style="width: 20px; height: 20px; color: var(--brand-coral, #FF5500);"></i>
                             <span class="stat-num">98.4%</span>
                         </div>
                         <span class="trust-bar-sub">On-Time 30-Min Doorstep Arrival</span>
@@ -726,7 +717,7 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                                     </div>
                                     <span class="verified-booking-pill">
                                         <i data-lucide="check-circle" style="width: 12px; height: 12px;"></i>
-                                        <span>Verified Booking</span>
+                                        <span>Verified Service</span>
                                     </span>
                                 </div>
                                 <span class="testimonial-date-tag"><?= htmlspecialchars($review['date'] ?? 'Recent'); ?></span>
@@ -809,7 +800,5 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
         window.KM_SERVICES = <?= json_encode($SERVICES_DATA); ?>;
     </script>
     <script src="assets/js/main.js"></script>
-    <script src="assets/js/booking.js"></script>
-    <script src="assets/js/partner.js"></script>
 </body>
 </html>

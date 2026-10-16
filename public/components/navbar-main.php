@@ -1,19 +1,14 @@
 <?php
 /**
- * KaamMitra - Reusable Floating Island Main Navbar Component
- * Supports public visitors, customer authentication states, and mobile drawer
+ * KaamMitra - Clean Marketplace Navbar Component
+ * Streamlined public navigation focused on services, pricing, and contact
  */
 
-if (!function_exists('getAppBasePath')) {
-    require_once __DIR__ . '/../includes/auth.php';
+if (!defined('APP_NAME')) {
+    require_once __DIR__ . '/../config.php';
 }
 
-$base = getAppBasePath();
-$isLoggedIn = function_exists('isCustomerLoggedIn') ? isCustomerLoggedIn() : false;
-$customer = $isLoggedIn ? getLoggedInCustomer() : null;
-
-$isPartnerLogged = function_exists('isPartnerLoggedIn') ? isPartnerLoggedIn() : false;
-$partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
+$base = function_exists('getAppBasePath') ? getAppBasePath() : './';
 ?>
 <!-- Floating Island Navbar -->
 <div class="header-wrapper">
@@ -47,43 +42,19 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                 <li><a href="<?= $base; ?>index.php#standard">Why Us</a></li>
                 <li><a href="<?= $base; ?>index.php#howItWorks">How It Works</a></li>
                 <li><a href="<?= $base; ?>index.php#reviews">Reviews</a></li>
+                <li><a href="<?= $base; ?>index.php#faq">FAQs</a></li>
+                <li><a href="<?= $base; ?>index.php#contact">Contact</a></li>
             </ul>
         </nav>
 
         <!-- Actions -->
         <div class="nav-actions">
-            <?php if ($isPartnerLogged && $partnerUser): ?>
-                <a href="<?= $base; ?>partner/dashboard.php" class="btn btn-outline btn-sm nav-partner-btn" style="text-decoration: none;" title="Partner Dashboard">
-                    <i data-lucide="briefcase" style="width: 14px; height: 14px; color: #10B981;"></i>
-                    <span>Mitra: <?= htmlspecialchars(explode(' ', $partnerUser['full_name'])[0]); ?></span>
-                </a>
-            <?php else: ?>
-                <a href="<?= $base; ?>partner/login.php" class="btn btn-outline btn-sm nav-partner-btn" style="text-decoration: none;" title="Partner Portal">
-                    <i data-lucide="users" style="width: 14px; height: 14px;"></i>
-                    <span>For Partners</span>
-                </a>
-            <?php endif; ?>
+            <a href="<?= $base; ?>index.php#services" class="btn btn-primary btn-sm nav-book-btn" style="text-decoration: none;">
+                <span class="btn-text-full">Explore Services</span>
+                <span class="btn-text-short">Services</span>
+            </a>
 
-            <?php if ($isLoggedIn && $customer): ?>
-                <a href="<?= $base; ?>customer/dashboard.php" class="btn btn-outline btn-sm nav-user-pill" title="Customer Dashboard" style="display: inline-flex; align-items: center; gap: 0.4rem; text-decoration: none;">
-                    <i data-lucide="user-check" style="width: 15px; height: 15px; color: #10B981;"></i>
-                    <span>Hi, <?= htmlspecialchars(explode(' ', $customer['full_name'])[0]); ?></span>
-                </a>
-                <a href="<?= $base; ?>customer/book.php" class="btn btn-primary btn-sm nav-book-btn" style="text-decoration: none;">
-                    <span class="btn-text-full">Book a Service</span>
-                    <span class="btn-text-short">Book</span>
-                </a>
-                <a href="<?= $base; ?>customer/logout.php" class="btn btn-ghost btn-sm" title="Log Out" style="color: var(--text-muted); padding: 0.4rem 0.5rem; display: inline-flex; align-items: center;">
-                    <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
-                </a>
-            <?php else: ?>
-                <a href="<?= $base; ?>customer/book.php" class="btn btn-primary btn-sm nav-book-btn" style="text-decoration: none;">
-                    <span class="btn-text-full">Book a Service</span>
-                    <span class="btn-text-short">Book</span>
-                </a>
-            <?php endif; ?>
-
-            <a href="tel:<?= defined('APP_PHONE') ? APP_PHONE : '1800-522-6648'; ?>" class="mobile-call-action-btn" title="Call Mitra Emergency Helpline" aria-label="Call emergency support">
+            <a href="tel:<?= defined('APP_PHONE') ? APP_PHONE : '1800-522-6648'; ?>" class="mobile-call-action-btn" title="Call Mitra 24/7 Helpline: <?= defined('APP_PHONE_DISPLAY') ? APP_PHONE_DISPLAY : '1800-KAAM-MITRA'; ?>" aria-label="Call emergency support">
                 <i data-lucide="phone" style="width: 18px; height: 18px;"></i>
             </a>
 
@@ -114,42 +85,45 @@ $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
                 <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
             </button>
 
-            <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem;">
-                <?php if ($isLoggedIn && $customer): ?>
-                    <div style="background: #F1F5F9; border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 0.5rem;">
-                        <div style="font-size: 0.75rem; color: #64748B; text-transform: uppercase; font-weight: 700;">Logged in Customer</div>
-                        <div style="font-size: 1.05rem; font-weight: 800; color: #0A1325;"><?= htmlspecialchars($customer['full_name']); ?></div>
-                        <div style="font-size: 0.8rem; color: #10B981; font-weight: 600;">+91 <?= htmlspecialchars($customer['mobile']); ?></div>
-                    </div>
-                    <a href="<?= $base; ?>customer/dashboard.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-                        <i data-lucide="layout-dashboard" style="width: 18px; height: 18px; color: #FF6600;"></i>
-                        <span>My Customer Dashboard</span>
-                    </a>
-                    <a href="<?= $base; ?>customer/logout.php" class="mobile-nav-link" style="font-size: 0.95rem; font-weight: 600; color: #EF4444; display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-                        <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
-                        <span>Sign Out</span>
-                    </a>
-                <?php else: ?>
-                    <a href="<?= $base; ?>customer/login.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-                        <i data-lucide="user" style="width: 18px; height: 18px; color: #FF6600;"></i>
-                        <span>Customer Login / Register</span>
-                    </a>
-                <?php endif; ?>
-
-                <hr style="border: 0; border-top: 1px solid #E2E8F0; margin: 0.5rem 0;">
-
-                <a href="<?= $base; ?>partner/login.php" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-                    <i data-lucide="briefcase" style="width: 18px; height: 18px; color: #FF6600;"></i>
-                    <span>Partner Hub (Earn with Us)</span>
+            <div style="display: flex; flex-direction: column; gap: 0.85rem; margin-bottom: 2rem;">
+                <a href="<?= $base; ?>index.php#services" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+                    <i data-lucide="layout-grid" style="width: 18px; height: 18px; color: #FF5500;"></i>
+                    <span>All Services Catalog</span>
                 </a>
-                <a href="<?= $base; ?>admin/index.php" class="mobile-nav-link" style="font-size: 0.9rem; font-weight: 600; color: #64748B; display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-                    <i data-lucide="shield" style="width: 16px; height: 16px;"></i>
-                    <span>Admin Console</span>
+                <a href="<?= $base; ?>index.php#trending" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+                    <i data-lucide="flame" style="width: 18px; height: 18px; color: #FF5500;"></i>
+                    <span>Trending Doorstep Repairs</span>
+                </a>
+                <a href="<?= $base; ?>index.php#pledge" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+                    <i data-lucide="receipt" style="width: 18px; height: 18px; color: #FF5500;"></i>
+                    <span>Fixed ₹149 Rate Card</span>
+                </a>
+                <a href="<?= $base; ?>index.php#standard" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+                    <i data-lucide="shield-check" style="width: 18px; height: 18px; color: #FF5500;"></i>
+                    <span>The KaamMitra Standard</span>
+                </a>
+                <a href="<?= $base; ?>index.php#howItWorks" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+                    <i data-lucide="workflow" style="width: 18px; height: 18px; color: #FF5500;"></i>
+                    <span>How It Works</span>
+                </a>
+                <a href="<?= $base; ?>index.php#reviews" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+                    <i data-lucide="star" style="width: 18px; height: 18px; color: #FF5500;"></i>
+                    <span>Verified Homeowner Reviews</span>
+                </a>
+                <a href="<?= $base; ?>index.php#faq" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+                    <i data-lucide="help-circle" style="width: 18px; height: 18px; color: #FF5500;"></i>
+                    <span>Frequently Asked Questions</span>
+                </a>
+                <a href="<?= $base; ?>index.php#contact" class="mobile-nav-link" style="font-size: 1rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+                    <i data-lucide="phone-call" style="width: 18px; height: 18px; color: #FF5500;"></i>
+                    <span>Contact Helpline (24/7)</span>
                 </a>
             </div>
 
             <div style="border-top: 1px solid #E2E8F0; padding-top: 1.5rem;">
-                <a href="<?= $base; ?>customer/book.php" class="btn btn-primary" style="width: 100%; justify-content: center; margin-bottom: 0.75rem; text-decoration: none;">Book a Service</a>
+                <a href="<?= $base; ?>index.php#services" class="btn btn-primary" style="width: 100%; justify-content: center; margin-bottom: 0.75rem; text-decoration: none;">
+                    <span>Explore All Services</span>
+                </a>
                 <a href="tel:<?= defined('APP_PHONE') ? APP_PHONE : '1800-522-6648'; ?>" class="btn btn-outline" style="width: 100%; justify-content: center; text-decoration: none;">
                     <i data-lucide="phone" style="width: 16px; height: 16px;"></i>
                     <span>Call <?= defined('APP_PHONE_DISPLAY') ? APP_PHONE_DISPLAY : '1800-KAAM-MITRA'; ?></span>

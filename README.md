@@ -1,30 +1,27 @@
 # KaamMitra - On-Demand Professional Home Services Marketplace (Cheery v1)
 
-A modern, high-conversion, responsive home services marketplace web platform inspired by Urban Company's browsing experience with bespoke branding and interactive booking flows.
+A modern, high-conversion, responsive public landing page showcasing on-demand home maintenance services with bespoke branding, standardized transparent rate cards, customer testimonials, and 24/7 helpline contact.
 
 ---
 
 ## 🌟 Key Features
 
-- **Urban Company-Inspired UX**:
-  - 8-tile Quick Category shortcuts with dynamic micro-interactions.
-  - Curated 2x2 photo hero showcase with verified guarantee badges.
-  - "In the Spotlight" promotional cards with photography thumbnails.
-  - "New & Noteworthy" modern service grid.
-  - "Most Booked Services" horizontal showcase.
-  - Category-specific carousels: Cleaning Essentials, Home Repair & Maintenance, and Appliance Repair & Service.
-  - High-impact promotional split lifestyle banners with rapid dispatch pills.
+- **Modern Marketplace Showcase**:
+  - Quick Category Hubs with instant service filtering and micro-interactions.
+  - Curated Hero Bento grid with verified guarantee badges and live pro spotlight.
+  - Interactive Live Search with instantaneous auto-suggestions and catalog filtering.
+  - Transparent ₹149 Doorstep Visiting Fee pledge with 30-Day Guarantee and Zero Advance requirement.
+  - Complete Services Catalog with photographic cards, inspection checklists, and expandable rate cards.
+  - The KaamMitra Standard: 4 trust pillars covering Aadhaar/Police verification, fixed pricing, and 30-day free rework.
+  - Step-by-step "How It Works" pipeline.
+  - Verified Customer Testimonials with aggregate trust metrics (4.88★ rating, 100% verified).
+  - Customer FAQs and dedicated 24/7 Helpline & Support contact desk.
 - **Unique Photography Assets**:
-  - 13 high-resolution, distinct service photography assets (no repetitive or cloned placeholders).
+  - 13 high-resolution, distinct service photography assets (no placeholders).
   - High visual fidelity with crisp aspect ratios and lazy loading.
-- **Interactive Booking Flow**:
-  - Multi-step modal booking with category selection, date/time scheduling, and real-time validation.
-  - Asynchronous AJAX booking submission (`api/submit-booking.php`) with simulated technician assignment and tracking ID generation.
-- **Service Partner Onboarding**:
-  - Dedicated partner registration modal with Aadhaar and skill verification workflow.
 - **Responsive & Accessible**:
-  - Adaptive desktop, tablet, and mobile drawer navigation with sticky bottom action bar.
-  - Dark mode support with persistent user preferences.
+  - Adaptive desktop, tablet, and mobile drawer navigation with mobile bottom navigation bar.
+  - Native dark mode support with CSS custom property palette.
   - Fast page loads with vanilla CSS architecture and zero heavy front-end framework bloat.
 
 ---
@@ -33,9 +30,8 @@ A modern, high-conversion, responsive home services marketplace web platform ins
 
 - **Backend**: PHP 8.x (Native, zero dependencies)
 - **Frontend**: HTML5, Vanilla CSS3 (Custom Design System, Variables, CSS Grid & Flexbox)
-- **Icons**: FontAwesome 6 Pro CDN + SVG Icons
+- **Icons**: Lucide Icons & Custom SVG Icon Renderer
 - **Typography**: Plus Jakarta Sans & Outfit (Google Fonts)
-- **API**: RESTful JSON endpoints (`/api/submit-booking.php`)
 
 ---
 
@@ -48,20 +44,20 @@ A modern, high-conversion, responsive home services marketplace web platform ins
 
 ### Local Development
 
-1. Clone the repository:
+1. Clone or navigate to the repository:
    ```bash
-   git clone https://github.com/saicharan-bhuthkuri/cheery-v1.git
    cd cheery-v1
    ```
 
 2. Start the built-in PHP development server:
    ```bash
-   php -S localhost:8080
+   php -S localhost:8080 -t public
    ```
+   *(or run `php -S localhost:8080` and navigate to `http://localhost:8080/public/index.php`)*
 
 3. Open your browser and navigate to:
    ```
-   http://localhost:8080/index.php
+   http://localhost:8080/
    ```
 
 ---
@@ -69,27 +65,32 @@ A modern, high-conversion, responsive home services marketplace web platform ins
 ## 📂 Project Structure
 
 ```
-├── api/
-│   └── submit-booking.php       # Booking submission JSON endpoint
-├── assets/
-│   ├── css/
-│   │   ├── dark-mode.css        # Dark theme color overrides
-│   │   ├── style.css            # Primary marketplace stylesheet
-│   │   └── variables.css        # CSS custom properties & design tokens
-│   ├── images/                  # 13 high-definition service photos
-│   └── js/
-│       ├── booking.js           # Multi-step booking modal controller
-│       ├── main.js              # Header, search, drawer & FAQ controller
-│       └── partner.js           # Partner registration controller
-├── data/
-│   ├── faqs.php                 # Frequently asked questions dataset
-│   ├── features.php             # Trust badges & platform statistics
-│   ├── services.php             # Full services catalog & rate cards
-│   └── testimonials.php         # Customer reviews dataset
-├── .gitignore                   # Git ignore file
-├── config.php                   # Global application configuration
-├── index.php                    # Main landing page
-└── README.md                    # Project documentation
+cheery-v1/
+├── public/
+│   ├── assets/
+│   │   ├── css/
+│   │   │   ├── dark-mode.css        # Dark theme color overrides
+│   │   │   ├── style.css            # Primary marketplace stylesheet
+│   │   │   └── variables.css        # CSS custom properties & design tokens
+│   │   ├── images/                  # 13 high-definition service photos
+│   │   └── js/
+│   │       ├── lucide.min.js        # Lucide icon library
+│   │       └── main.js              # Header, search, drawer, filters & FAQ controller
+│   ├── components/
+│   │   ├── footer-main.php          # Public marketplace footer & city modal
+│   │   ├── icons.php                # Unified SVG / Lucide icon renderer
+│   │   └── navbar-main.php          # Floating island navbar & mobile drawer
+│   ├── data/
+│   │   ├── faqs.php                 # Frequently asked questions dataset
+│   │   ├── features.php             # Trust badges & platform statistics
+│   │   ├── services.php             # Full services catalog & rate cards
+│   │   └── testimonials.php         # Customer reviews dataset
+│   ├── includes/
+│   │   └── config.php               # Configuration forwarder
+│   ├── config.php                   # Global application configuration
+│   └── index.php                    # Main public landing page
+├── .gitignore                       # Git ignore file
+└── README.md                        # Project documentation
 ```
 
 ---
