@@ -65,6 +65,24 @@ html {
     scroll-behavior: smooth;
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+
+/* Hide scrollbar for Chrome, Safari, Opera, Edge */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+}
+
+/* Global scrollbar suppression for modern browsers */
+*, *::before, *::after {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 }
 
 section[id], .section[id], [id] {
@@ -77,6 +95,8 @@ body {
     color: var(--text-secondary);
     line-height: 1.6;
     overflow-x: hidden;
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
     -webkit-font-smoothing: antialiased;
 }
 
