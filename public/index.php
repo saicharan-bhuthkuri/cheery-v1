@@ -4,12 +4,15 @@
  * Completely redesigned visual architecture & app-first experience
  */
 
-require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/data/services.php';
 require_once __DIR__ . '/data/features.php';
 require_once __DIR__ . '/data/testimonials.php';
 require_once __DIR__ . '/data/faqs.php';
+require_once __DIR__ . '/components/icons.php';
+
+$base = getAppBasePath();
 
 $isLoggedIn = isCustomerLoggedIn();
 $customer = $isLoggedIn ? getLoggedInCustomer() : null;
@@ -17,73 +20,6 @@ $customer = $isLoggedIn ? getLoggedInCustomer() : null;
 $isPartnerLogged = isPartnerLoggedIn();
 $partnerUser = $isPartnerLogged ? getLoggedInPartner() : null;
 
-/**
- * Renders a crisp Lucide icon element with fallback inline SVG
- */
-function renderIcon(string $name, int $size = 20): string {
-    $lucideMap = [
-        'wrench' => 'wrench',
-        'droplet' => 'droplet',
-        'zap' => 'zap',
-        'cpu' => 'cpu',
-        'hammer' => 'hammer',
-        'sparkles' => 'sparkles',
-        'paint-brush' => 'palette',
-        'lock' => 'lock',
-        'bolt' => 'zap',
-        'check' => 'check',
-        'shield-check' => 'shield-check',
-        'badge-check' => 'badge-check',
-        'star' => 'star',
-        'clock' => 'clock',
-        'phone' => 'phone',
-        'map-pin' => 'map-pin',
-        'calendar-clock' => 'calendar',
-        'user-check' => 'user-check',
-        'tool' => 'wrench',
-        'shield' => 'shield',
-        'users' => 'users',
-        'home' => 'home',
-        'receipt' => 'receipt',
-        'headset' => 'headphones',
-        'wallet' => 'wallet',
-        'gift' => 'gift',
-        'shirt' => 'shirt',
-        'heart-handshake' => 'heart-handshake',
-        'search' => 'search',
-        'chevron-down' => 'chevron-down'
-    ];
-    $lucideName = $lucideMap[$name] ?? $name;
-
-    $icons = [
-        'wrench' => '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>',
-        'droplet' => '<path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>',
-        'zap' => '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>',
-        'cpu' => '<rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line><line x1="9" y1="20" x2="9" y2="23"></line><line x1="15" y1="20" x2="15" y2="23"></line><line x1="20" y1="9" x2="23" y2="9"></line><line x1="20" y1="14" x2="23" y2="14"></line><line x1="1" y1="9" x2="4" y2="9"></line><line x1="1" y1="14" x2="4" y2="14"></line>',
-        'hammer' => '<path d="M15 12l-8.5 8.5a2.12 2.12 0 1 1-3-3L12 9"></path><path d="M17.64 6.36a3 3 0 0 1 0 4.24l-1.41 1.41-4.24-4.24 1.41-1.41a3 3 0 0 1 4.24 0z"></path><path d="M14 2l4 4"></path>',
-        'sparkles' => '<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path>',
-        'paint-brush' => '<path d="M18.37 2.63 14 7l-1.59-1.59a2 2 0 0 0-2.82 0L8 7l9 9 1.59-1.59a2 2 0 0 0 0-2.82L17 10l4.37-4.37a2.12 2.12 0 1 0-3-3Z"></path><path d="M9 8c-2 3-4 3.5-7 4l8 8c.5-3 1-5 4-7"></path><path d="M14.5 17.5 4.5 15"></path>',
-        'lock' => '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path>',
-        'bolt' => '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>',
-        'check' => '<polyline points="20 6 9 17 4 12"></polyline>',
-        'shield-check' => '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path>',
-        'badge-check' => '<path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z"></path><path d="m9 12 2 2 4-4"></path>',
-        'star' => '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>',
-        'clock' => '<circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline>',
-        'phone' => '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>',
-        'map-pin' => '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle>',
-        'calendar-clock' => '<path d="M21 7.5V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h3.5"></path><path d="M16 2v4"></path><path d="M8 2v4"></path><path d="M3 10h18"></path><circle cx="17" cy="17" r="5"></circle><polyline points="17 14 17 17 19 19"></polyline>',
-        'user-check' => '<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="8.5" cy="7" r="4"></circle><polyline points="17 11 19 13 23 9"></polyline>',
-        'search' => '<circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>',
-        'chevron-down' => '<polyline points="6 9 12 15 18 9"></polyline>'
-    ];
-
-    $content = $icons[$name] ?? '<circle cx="12" cy="12" r="10"></circle>';
-    return sprintf(
-        '<i data-lucide="%s" class="km-lucide km-icon-%s" style="width: %dpx; height: %dpx; display: inline-flex; align-items: center; justify-content: center;"><svg width="%d" height="%d" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">%s</svg></i>',
-        htmlspecialchars($lucideName), htmlspecialchars($name), $size, $size, $size, $size, $content
-    );
-}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -101,155 +37,7 @@ function renderIcon(string $name, int $size = 20): string {
 </head>
 <body>
 
-    <!-- =======================================================================
-         FLOATING ISLAND NAVBAR (HEADER)
-         ======================================================================= -->
-    <div class="header-wrapper">
-        <header class="site-navbar" id="siteHeader">
-            <!-- Brand -->
-            <div class="nav-brand-group">
-                <a href="index.php" class="brand-link" aria-label="KaamMitra Home">
-                    <div class="brand-mark">
-                        <i data-lucide="wrench" style="width: 20px; height: 20px;"></i>
-                    </div>
-                    <div class="brand-text-block">
-                        <span class="brand-name">Kaam<span>Mitra</span></span>
-                        <span class="brand-domain-tag">kaammitra.in</span>
-                    </div>
-                </a>
-
-                <!-- Location Selector Pill -->
-                <button type="button" class="nav-location-pill trigger-location-modal" id="navLocationBtn" aria-label="Choose service city">
-                    <span class="location-live-dot"></span>
-                    <span id="navCityText">Mumbai, MH</span>
-                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
-                </button>
-            </div>
-
-            <!-- Navigation Menu -->
-            <nav class="nav-desktop-menu">
-                <ul class="nav-menu-links">
-                    <li><a href="#services">Services</a></li>
-                    <li><a href="#trending">Trending</a></li>
-                    <li><a href="#pledge">Rate Card</a></li>
-                    <li><a href="#standard">Why Us</a></li>
-                    <li><a href="#howItWorks">How It Works</a></li>
-                    <li><a href="#reviews">Reviews</a></li>
-                </ul>
-            </nav>
-
-            <!-- Actions -->
-            <div class="nav-actions">
-                <?php if ($isPartnerLogged && $partnerUser): ?>
-                    <a href="partner-dashboard.php" class="btn btn-outline btn-sm nav-partner-btn" style="text-decoration: none;" title="Partner Dashboard">
-                        <i data-lucide="briefcase" style="width: 14px; height: 14px; color: #10B981;"></i>
-                        <span>Mitra: <?= htmlspecialchars(explode(' ', $partnerUser['full_name'])[0]); ?></span>
-                    </a>
-                <?php else: ?>
-                    <a href="partner-login.php" class="btn btn-outline btn-sm nav-partner-btn" style="text-decoration: none;" title="Partner Portal">
-                        <i data-lucide="users" style="width: 14px; height: 14px;"></i>
-                        <span>For Partners</span>
-                    </a>
-                <?php endif; ?>
-                <?php if ($isLoggedIn && $customer): ?>
-                    <a href="dashboard.php" class="btn btn-outline btn-sm nav-user-pill" title="Customer Dashboard" style="display: inline-flex; align-items: center; gap: 0.4rem;">
-                        <i data-lucide="user-check" style="width: 15px; height: 15px; color: #10B981;"></i>
-                        <span>Hi, <?= htmlspecialchars(explode(' ', $customer['full_name'])[0]); ?></span>
-                    </a>
-                    <a href="book.php" class="btn btn-primary btn-sm nav-book-btn">
-                        <span class="btn-text-full">Book a Service</span>
-                        <span class="btn-text-short">Book</span>
-                    </a>
-                    <a href="logout.php" class="btn btn-ghost btn-sm" title="Log Out" style="color: var(--text-muted); padding: 0.4rem 0.5rem; display: inline-flex; align-items: center;">
-                        <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
-                    </a>
-                <?php else: ?>
-                    <a href="login.php?redirect=book.php" class="btn btn-primary btn-sm nav-book-btn" style="text-decoration: none;">
-                        <span class="btn-text-full">Book a Service</span>
-                        <span class="btn-text-short">Book</span>
-                    </a>
-                <?php endif; ?>
-                <a href="tel:<?= APP_PHONE; ?>" class="mobile-call-action-btn" title="Call Mitra Emergency Helpline" aria-label="Call emergency support">
-                    <i data-lucide="phone" style="width: 18px; height: 18px;"></i>
-                </a>
-                <button id="mobileMenuBtn" class="mobile-hamburger" aria-label="Open mobile menu">
-                    <i data-lucide="menu" style="width: 22px; height: 22px;"></i>
-                </button>
-            </div>
-        </header>
-    </div>
-
-    <!-- Mobile Navigation Drawer -->
-    <div id="mobileDrawerOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Mobile Navigation Menu">
-        <div class="modal-container" style="max-width: 360px; margin-left: auto; height: 100vh; border-radius: 0;">
-            <div class="modal-header">
-                <div class="brand-link">
-                    <div class="brand-mark">
-                        <i data-lucide="wrench" style="width: 18px; height: 18px;"></i>
-                    </div>
-                    <span class="brand-name">Kaam<span>Mitra</span></span>
-                </div>
-                <button id="closeMobileDrawerBtn" class="modal-close-btn" aria-label="Close menu">&times;</button>
-            </div>
-            
-            <div class="modal-body" style="padding: 1.5rem;">
-                <button type="button" class="nav-location-pill trigger-location-modal" style="width: 100%; justify-content: center; margin-bottom: 1.5rem;">
-                    <span class="location-live-dot"></span>
-                    <span id="navMobileCityText">Mumbai, MH</span>
-                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
-                </button>
-
-                <div style="display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2rem;">
-                    <?php if ($isLoggedIn && $customer): ?>
-                        <div style="background: #F1F5F9; border-radius: 12px; padding: 0.85rem 1rem; margin-bottom: 0.5rem;">
-                            <div style="font-size: 0.75rem; color: #64748B; text-transform: uppercase; font-weight: 700;">Logged in Customer</div>
-                            <div style="font-size: 1.05rem; font-weight: 800; color: #0A1325;"><?= htmlspecialchars($customer['full_name']); ?></div>
-                            <div style="font-size: 0.8rem; color: #10B981; font-weight: 600;">+91 <?= htmlspecialchars($customer['mobile']); ?></div>
-                        </div>
-                        <a href="dashboard.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="layout-dashboard" style="width: 18px; height: 18px; color: #FF6600;"></i>
-                            <span>My Customer Dashboard</span>
-                        </a>
-                        <a href="logout.php" class="mobile-nav-link" style="font-size: 0.95rem; font-weight: 600; color: #EF4444; display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
-                            <span>Sign Out</span>
-                        </a>
-                    <?php endif; ?>
-
-                    <a href="#services" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Services Catalog</a>
-                    <a href="#trending" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Trending Bookings</a>
-                    <a href="#pledge" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Transparent Visiting Fee</a>
-                    <a href="#standard" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">The KaamMitra Standard</a>
-                    <a href="#howItWorks" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">How It Works</a>
-                    <a href="#reviews" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Customer Reviews</a>
-                    <a href="#faq" class="mobile-nav-link" style="font-size: 1.1rem; font-weight: 700; color: #090D16;">Help &amp; FAQs</a>
-                    <?php if ($isPartnerLogged && $partnerUser): ?>
-                        <a href="partner-dashboard.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #10B981; display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
-                            <span>Partner Dashboard (<?= htmlspecialchars(explode(' ', $partnerUser['full_name'])[0]); ?>)</span>
-                        </a>
-                    <?php else: ?>
-                        <a href="partner-login.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #090D16; display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="log-in" style="width: 18px; height: 18px; color: #FF6600;"></i>
-                            <span>Partner Login</span>
-                        </a>
-                        <a href="partner-register.php" class="mobile-nav-link" style="font-size: 1.05rem; font-weight: 700; color: #FF5500; display: flex; align-items: center; gap: 0.5rem;">
-                            <i data-lucide="user-plus" style="width: 18px; height: 18px;"></i>
-                            <span>Become a Partner (₹48k/mo)</span>
-                        </a>
-                    <?php endif; ?>
-                </div>
-
-                <a href="<?= $isLoggedIn ? 'book.php' : 'login.php?redirect=book.php'; ?>" class="btn btn-primary btn-full" style="margin-bottom: 0.75rem; justify-content: center; text-decoration: none;">
-                    <span>Book a Service</span>
-                </a>
-                <a href="tel:<?= APP_PHONE; ?>" class="btn btn-outline btn-full" style="text-decoration: none; justify-content: center;">
-                    <i data-lucide="phone" style="width: 16px; height: 16px;"></i>
-                    <span>Helpline: <?= APP_PHONE_DISPLAY; ?></span>
-                </a>
-            </div>
-        </div>
-    </div>
+    <?php require __DIR__ . "/components/navbar-main.php"; ?>
 
     <main>
         <!-- ===================================================================
@@ -840,11 +628,11 @@ function renderIcon(string $name, int $size = 20): string {
                         </div>
 
                         <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                            <a href="partner-register.php" class="btn btn-primary btn-lg" style="text-decoration: none;">
+                            <a href="partner/register.php" class="btn btn-primary btn-lg" style="text-decoration: none;">
                                 <span>Register as Partner Now</span>
                                 <i data-lucide="arrow-right" style="width: 18px; height: 18px;"></i>
                             </a>
-                            <a href="partner-login.php" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.35); text-decoration: none; background: rgba(255,255,255,0.06);">
+                            <a href="partner/login.php" class="btn btn-outline btn-lg" style="color: #FFFFFF; border-color: rgba(255,255,255,0.35); text-decoration: none; background: rgba(255,255,255,0.06);">
                                 <span>Partner Login</span>
                             </a>
                         </div>
@@ -1014,137 +802,7 @@ function renderIcon(string $name, int $size = 20): string {
         </section>
     </main>
 
-    <!-- =======================================================================
-         FOOTER (MODERN MINIMALIST DIRECTORY)
-         ======================================================================= -->
-    <footer class="site-footer">
-        <div class="container">
-            <div class="footer-top-grid">
-                <div>
-                    <h3 class="footer-brand-title">Kaam<span>Mitra</span></h3>
-                    <p class="footer-desc">
-                        India's trusted on-demand home maintenance marketplace. We connect residential homeowners with background-verified technicians delivering guaranteed work within 30 minutes.
-                    </p>
-                    <div style="display: flex; align-items: center; gap: 0.75rem; color: #FFFFFF; font-weight: 700; font-size: 0.95rem;">
-                        <i data-lucide="phone" style="width: 18px; height: 18px; color: var(--brand-coral);"></i>
-                        <span>Helpline: <?= APP_PHONE_DISPLAY; ?></span>
-                    </div>
-                </div>
-
-                <div>
-                    <h4 class="footer-heading">Services</h4>
-                    <ul class="footer-links-list">
-                        <li><a href="#services">Plumbing &amp; Leakage</a></li>
-                        <li><a href="#services">Electrical Repairs</a></li>
-                        <li><a href="#services">AC &amp; Appliance Service</a></li>
-                        <li><a href="#services">Home Deep Cleaning</a></li>
-                        <li><a href="#services">Carpentry &amp; Woodwork</a></li>
-                        <li><a href="#services">Waterproofing &amp; Paint</a></li>
-                    </ul>
-                </div>
-
-                <div>
-                    <h4 class="footer-heading">Company</h4>
-                    <ul class="footer-links-list">
-                        <li><a href="#standard">The KaamMitra Standard</a></li>
-                        <li><a href="#pledge">Transparent Pricing</a></li>
-                        <li><a href="#howItWorks">How It Works</a></li>
-                        <li><a href="#partnerSection">Partner Recruitment</a></li>
-                        <li><a href="#reviews">Verified Reviews</a></li>
-                        <li><a href="#faq">Safety &amp; Compliance</a></li>
-                    </ul>
-                </div>
-
-                <div>
-                    <h4 class="footer-heading">Cities Served</h4>
-                    <ul class="footer-links-list">
-                        <?php foreach (array_slice($AVAILABLE_CITIES, 0, 6) as $c): ?>
-                            <li><a href="javascript:void(0)" class="trigger-location-modal"><?= htmlspecialchars($c); ?></a></li>
-                        <?php endforeach; ?>
-                    </ul>
-                </div>
-            </div>
-
-            <div class="footer-bottom-row">
-                <div>&copy; <?= date('Y'); ?> KaamMitra Technologies Private Limited. All rights reserved.</div>
-                <div style="display: flex; gap: 1.5rem;">
-                    <a href="javascript:void(0)" style="color: rgba(255,255,255,0.6);">Privacy Policy</a>
-                    <a href="javascript:void(0)" style="color: rgba(255,255,255,0.6);">Terms of Service</a>
-                    <a href="javascript:void(0)" style="color: rgba(255,255,255,0.6);">Security Audit</a>
-                </div>
-            </div>
-        </div>
-    </footer>
-
-    <!-- =======================================================================
-         LOCATION SELECTOR MODAL (MULTI-CITY METRO PICKER)
-         ======================================================================= -->
-    <div id="locationModalOverlay" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Select City">
-        <div class="modal-container" style="max-width: 540px;">
-            <div class="modal-header">
-                <div style="display: flex; align-items: center; gap: 0.6rem;">
-                    <i data-lucide="map-pin" style="color: #FF5500; width: 22px; height: 22px;"></i>
-                    <h3 class="modal-title">Select Your Service City</h3>
-                </div>
-                <button id="closeLocationModalBtn" class="modal-close-btn" aria-label="Close location modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p style="color: #64748B; font-size: 0.9rem; margin-bottom: 1.25rem;">
-                    KaamMitra operates with dedicated rapid-dispatch hubs across major Indian metros with 30-minute doorstep arrival.
-                </p>
-                
-                <div class="location-search-wrap" style="position: relative; margin-bottom: 1.25rem;">
-                    <i data-lucide="search" style="width: 17px; height: 17px; color: #94A3B8; position: absolute; left: 1rem; top: 50%; transform: translateY(-50%);"></i>
-                    <input type="text" id="citySearchInput" class="form-control" style="padding-left: 2.75rem;" placeholder="Search your city name..." autocomplete="off">
-                </div>
-
-                <div class="cities-grid" id="citiesGrid">
-                    <?php foreach ($AVAILABLE_CITIES as $city): ?>
-                        <button type="button" class="city-select-btn <?= $city === 'Mumbai' ? 'active' : ''; ?>" data-city="<?= htmlspecialchars($city); ?>">
-                            <div class="city-select-info">
-                                <span class="city-name"><?= htmlspecialchars($city); ?></span>
-                                <span class="city-badge">⚡ 30m Dispatch</span>
-                            </div>
-                            <i data-lucide="check" class="city-check-icon" style="width: 18px; height: 18px;"></i>
-                        </button>
-                    <?php endforeach; ?>
-                </div>
-            </div>
-        </div>
-    </div>
-
-
-
-
-    <!-- =======================================================================
-         MOBILE APP-LIKE FIXED BOTTOM NAVIGATION BAR
-         ======================================================================= -->
-    <nav class="mobile-app-bottom-bar" id="mobileAppBottomBar" aria-label="Mobile App Navigation">
-        <a href="#hero" class="app-tab active" data-tab="home" id="tabHome">
-            <i data-lucide="home"></i>
-            <span>Home</span>
-        </a>
-        <a href="#services" class="app-tab" data-tab="services" id="tabServices">
-            <i data-lucide="layout-grid"></i>
-            <span>Services</span>
-        </a>
-        <a href="<?= $isLoggedIn ? 'book.php' : 'login.php?redirect=book.php'; ?>" class="app-tab app-tab-highlight" data-tab="book" id="tabBook" aria-label="Book a Service">
-            <div class="tab-highlight-circle">
-                <i data-lucide="calendar-plus"></i>
-            </div>
-            <span>Book</span>
-        </a>
-        <a href="<?= $isPartnerLogged ? 'partner-dashboard.php' : 'partner-login.php'; ?>" class="app-tab" data-tab="partner" id="tabPartner" aria-label="Partner Portal">
-            <i data-lucide="briefcase"></i>
-            <span>Partner</span>
-        </a>
-        <?php if ($isLoggedIn): ?>
-            <a href="dashboard.php" class="app-tab" data-tab="account" id="tabAccount" aria-label="My Account">
-                <i data-lucide="user"></i>
-                <span>Account</span>
-            </a>
-        <?php endif; ?>
-    </nav>
+    <?php require __DIR__ . "/components/footer-main.php"; ?>
 
     <!-- Global Data & Scripts -->
     <script>

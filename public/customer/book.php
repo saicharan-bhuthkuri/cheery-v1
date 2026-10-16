@@ -4,12 +4,16 @@
  * Authenticated booking workflow integrated with MySQL persistence
  */
 
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/data/services.php';
+require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../data/services.php';
+require_once __DIR__ . '/../components/icons.php';
+require_once __DIR__ . '/../components/alert.php';
+
+$base = getAppBasePath();
 
 // Prepare redirect URL preserving any service parameters
-$currentUri = 'book.php';
+$currentUri = 'customer/book.php';
 if (!empty($_SERVER['QUERY_STRING'])) {
     $currentUri .= '?' . $_SERVER['QUERY_STRING'];
 }
@@ -105,101 +109,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $csrfToken = getCsrfToken();
+$pageTitle = 'Book a Service - ' . APP_NAME;
+$extraHead = '<style>
+    body { background-color: #F8FAFC; min-height: 100vh; display: flex; flex-direction: column; }
+    .book-container { max-width: 820px; margin: 2rem auto; padding: 0 1.25rem; width: 100%; }
+    .book-card { background: #FFFFFF; border-radius: 24px; padding: 2.25rem; box-shadow: 0 8px 30px rgba(10, 19, 37, 0.06); border: 1px solid var(--border-subtle); }
+    @media (max-width: 600px) { .book-card { padding: 1.5rem 1.25rem; } }
+    .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; }
+    @media (max-width: 600px) { .form-grid-2 { grid-template-columns: 1fr; gap: 1rem; } }
+    .field-label { display: block; font-size: 0.85rem; font-weight: 700; color: var(--navy-900); margin-bottom: 0.4rem; }
+    .price-badge-box { background: linear-gradient(135deg, #FFF5EE, #FFEADB); border: 1.5px solid var(--orange-200); border-radius: 16px; padding: 1.25rem; display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
+    .conf-card { text-align: center; padding: 2rem 1rem; }
+</style>';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Book a Service - <?= htmlspecialchars(APP_NAME); ?></title>
-    
-    <link rel="stylesheet" href="assets/css/variables.css">
-    <link rel="stylesheet" href="assets/css/style.css">
-    <script src="assets/js/lucide.min.js"></script>
-    <style>
-        body {
-            background-color: #F8FAFC;
-            min-height: 100vh;
-        }
-        .book-header {
-            background: #0A1325;
-            color: #FFFFFF;
-            padding: 1rem 0;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-        .book-container {
-            max-width: 820px;
-            margin: 2rem auto;
-            padding: 0 1.25rem;
-        }
-        .book-card {
-            background: #FFFFFF;
-            border-radius: 24px;
-            padding: 2.25rem;
-            box-shadow: 0 8px 30px rgba(10, 19, 37, 0.06);
-            border: 1px solid var(--border-subtle);
-        }
-        @media (max-width: 600px) {
-            .book-card {
-                padding: 1.5rem 1.25rem;
-            }
-        }
-        .form-grid-2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1.25rem;
-        }
-        @media (max-width: 600px) {
-            .form-grid-2 {
-                grid-template-columns: 1fr;
-                gap: 1rem;
-            }
-        }
-        .field-label {
-            display: block;
-            font-size: 0.85rem;
-            font-weight: 700;
-            color: var(--navy-900);
-            margin-bottom: 0.4rem;
-        }
-        .price-badge-box {
-            background: linear-gradient(135deg, #FFF5EE, #FFEADB);
-            border: 1.5px solid var(--orange-200);
-            border-radius: 16px;
-            padding: 1.25rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1.5rem;
-        }
-        .conf-card {
-            text-align: center;
-            padding: 2rem 1rem;
-        }
-    </style>
+    <?php require __DIR__ . '/../components/head.php'; ?>
 </head>
 <body>
-
-<header class="book-header">
-    <div style="max-width: 820px; margin: 0 auto; padding: 0 1.25rem; display: flex; align-items: center; justify-content: space-between;">
-        <a href="index.php" style="display: flex; align-items: center; gap: 0.5rem; text-decoration: none;">
-            <div style="width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg, #FF6600, #E65100); display: flex; align-items: center; justify-content: center; color: #FFFFFF;">
-                <i data-lucide="wrench" style="width: 18px; height: 18px;"></i>
-            </div>
-            <span style="font-size: 1.3rem; font-weight: 800; color: #FFFFFF;">Kaam<span style="color: #FF6600;">Mitra</span></span>
-        </a>
-
-        <div style="display: flex; align-items: center; gap: 1rem;">
-            <span class="user-greeting-tag" style="font-size: 0.85rem; color: rgba(255,255,255,0.7);">
-                Logged in as <strong><?= htmlspecialchars(explode(' ', $customer['full_name'])[0]); ?></strong>
-            </span>
-            <a href="dashboard.php" class="btn btn-outline btn-sm" style="color: #FFFFFF; border-color: rgba(255,255,255,0.3); border-radius: 8px;">
-                <i data-lucide="layout-dashboard" style="width: 15px; height: 15px;"></i>
-                <span>My Dashboard</span>
-            </a>
-        </div>
-    </div>
-</header>
+<?php
+require __DIR__ . '/../components/navbar-main.php';
+?>
 
 <main class="book-container">
     <?php if ($bookingSuccess && $confirmedBooking): ?>
@@ -252,11 +183,11 @@ $csrfToken = getCsrfToken();
 
             <!-- Action buttons -->
             <div style="display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;">
-                <a href="dashboard.php" class="btn btn-primary" style="padding: 0.85rem 1.75rem; border-radius: 12px; font-weight: 700;">
+                <a href="<?= $base; ?>customer/dashboard.php" class="btn btn-primary" style="padding: 0.85rem 1.75rem; border-radius: 12px; font-weight: 700; text-decoration: none;">
                     <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
                     <span>View in My Dashboard</span>
                 </a>
-                <a href="index.php" class="btn btn-outline" style="padding: 0.85rem 1.75rem; border-radius: 12px; font-weight: 600;">
+                <a href="<?= $base; ?>index.php" class="btn btn-outline" style="padding: 0.85rem 1.75rem; border-radius: 12px; font-weight: 600; text-decoration: none;">
                     <span>Back to Home</span>
                 </a>
             </div>
@@ -275,14 +206,9 @@ $csrfToken = getCsrfToken();
                 </p>
             </div>
 
-            <?php if (!empty($error)): ?>
-                <div style="background: #FEF2F2; border: 1px solid #FCA5A5; color: #DC2626; border-radius: 10px; padding: 0.85rem 1rem; margin-bottom: 1.5rem; font-size: 0.9rem; display: flex; align-items: center; gap: 0.6rem;">
-                    <i data-lucide="alert-circle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
-                    <span><?= htmlspecialchars($error); ?></span>
-                </div>
-            <?php endif; ?>
+            <?php if (!empty($error)) echo renderAlert($error, 'error'); ?>
 
-            <form action="book.php" method="POST" id="bookingPageForm">
+            <form action="<?= $base; ?>customer/book.php" method="POST" id="bookingPageForm">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
                 <input type="hidden" name="estimated_price" id="formPriceInput" value="<?= !empty($selectedPrice) ? htmlspecialchars($selectedPrice) : '199'; ?>">
 
@@ -417,6 +343,11 @@ $csrfToken = getCsrfToken();
         </div>
     <?php endif; ?>
 </main>
+
+<?php
+$portalName = 'Customer Service Portal';
+require __DIR__ . '/../components/footer-portal.php';
+?>
 
 <script>
     if (window.lucide) {

@@ -4,7 +4,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-    // Intercept any legacy booking modal triggers and redirect to book.php
+    // Intercept any legacy booking modal triggers and redirect to customer/book.php
     const triggerButtons = document.querySelectorAll('.trigger-booking-modal');
     triggerButtons.forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -31,6 +31,8 @@ window.openBookingModal = function(serviceCat = 'plumbing', preselectedSub = '',
     if (preselectedSub) params.set('sub', preselectedSub);
     if (preselectedPrice) params.set('price', preselectedPrice);
 
-    const targetUrl = 'book.php?' + params.toString();
+    const isInsideCustomer = window.location.pathname.includes('/customer/');
+    const basePath = isInsideCustomer ? 'book.php' : 'customer/book.php';
+    const targetUrl = basePath + '?' + params.toString();
     window.location.href = targetUrl;
 };

@@ -8,7 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     legacyTriggers.forEach(btn => {
         btn.addEventListener('click', (e) => {
             e.preventDefault();
-            window.location.href = 'partner-login.php';
+            const isInsidePartner = window.location.pathname.includes('/partner/');
+            window.location.href = isInsidePartner ? 'login.php' : 'partner/login.php';
         });
     });
 });

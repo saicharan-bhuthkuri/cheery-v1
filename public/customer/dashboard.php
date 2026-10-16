@@ -4,11 +4,12 @@
  * Protected customer portal with profile & active bookings
  */
 
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/data/services.php';
+require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../data/services.php';
 
-$customer = requireCustomerAuth('dashboard.php');
+$base = getAppBasePath();
+$customer = requireCustomerAuth($base . 'customer/dashboard.php');
 
 $pdo = getDBConnection();
 
@@ -24,17 +25,14 @@ $bookings = $stmt->fetchAll();
 $totalBookings = count($bookings);
 $activeBookings = array_filter($bookings, fn($b) => in_array($b['status'], ['Confirmed', 'In Progress']));
 $completedBookings = array_filter($bookings, fn($b) => $b['status'] === 'Completed');
+
+$pageTitle = 'Customer Dashboard - ' . APP_NAME;
+$assetPath = $base . 'assets';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer Dashboard - <?= htmlspecialchars(APP_NAME); ?></title>
-    
-    <link rel="stylesheet" href="assets/css/variables.css">
-    <link rel="stylesheet" href="assets/css/style.css">
-    <script src="assets/js/lucide.min.js"></script>
+    <?php require_once __DIR__ . '/../components/head.php'; ?>
     <style>
         body {
             background-color: #F8FAFC;
@@ -198,7 +196,7 @@ $completedBookings = array_filter($bookings, fn($b) => $b['status'] === 'Complet
 <!-- Dashboard Header -->
 <header class="dashboard-header">
     <div class="dash-nav-container">
-        <a href="index.php" style="display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
+        <a href="<?= $base; ?>index.php" style="display: flex; align-items: center; gap: 0.6rem; text-decoration: none;">
             <div style="width: 38px; height: 38px; border-radius: 10px; background: linear-gradient(135deg, #FF6600, #E65100); display: flex; align-items: center; justify-content: center; color: #FFFFFF;">
                 <i data-lucide="wrench" style="width: 20px; height: 20px;"></i>
             </div>
@@ -209,15 +207,15 @@ $completedBookings = array_filter($bookings, fn($b) => $b['status'] === 'Complet
         </a>
 
         <div style="display: flex; align-items: center; gap: 1rem;">
-            <a href="book.php" class="btn btn-primary btn-sm" style="border-radius: 8px;">
+            <a href="<?= $base; ?>customer/book.php" class="btn btn-primary btn-sm" style="border-radius: 8px; text-decoration: none;">
                 <i data-lucide="calendar-plus" style="width: 16px; height: 16px;"></i>
                 <span>Book a Service</span>
             </a>
-            <a href="index.php" class="btn btn-outline btn-sm" style="color: #FFFFFF; border-color: rgba(255,255,255,0.25); border-radius: 8px;">
+            <a href="<?= $base; ?>index.php" class="btn btn-outline btn-sm" style="color: #FFFFFF; border-color: rgba(255,255,255,0.25); border-radius: 8px; text-decoration: none;">
                 <i data-lucide="home" style="width: 15px; height: 15px;"></i>
                 <span>Home</span>
             </a>
-            <a href="logout.php" class="btn btn-ghost btn-sm" style="color: rgba(255,255,255,0.7); border-radius: 8px;" title="Log out">
+            <a href="<?= $base; ?>customer/logout.php" class="btn btn-ghost btn-sm" style="color: rgba(255,255,255,0.7); border-radius: 8px; text-decoration: none;" title="Log out">
                 <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
                 <span>Logout</span>
             </a>
@@ -237,7 +235,7 @@ $completedBookings = array_filter($bookings, fn($b) => $b['status'] === 'Complet
             </p>
         </div>
         <div>
-            <a href="book.php" class="btn btn-primary" style="padding: 0.75rem 1.4rem; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 14px rgba(255,102,0,0.3);">
+            <a href="<?= $base; ?>customer/book.php" class="btn btn-primary" style="padding: 0.75rem 1.4rem; border-radius: 12px; font-weight: 700; box-shadow: 0 4px 14px rgba(255,102,0,0.3); text-decoration: none;">
                 <i data-lucide="calendar-plus" style="width: 18px; height: 18px;"></i>
                 <span>Schedule New Mitra</span>
             </a>
@@ -443,18 +441,10 @@ $completedBookings = array_filter($bookings, fn($b) => $b['status'] === 'Complet
     </div>
 </main>
 
-<footer style="background: #FFFFFF; border-top: 1px solid var(--border-subtle); padding: 1.5rem 0; margin-top: 3rem; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
-    <div style="max-width: 1200px; margin: 0 auto; padding: 0 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
-        <div>
-            &copy; <?= date('Y'); ?> KaamMitra Services. All rights reserved.
-        </div>
-        <div style="display: flex; gap: 1.5rem;">
-            <a href="index.php" style="color: var(--text-secondary); text-decoration: none;">Home</a>
-            <a href="book.php" style="color: var(--text-secondary); text-decoration: none;">Book Service</a>
-            <a href="logout.php" style="color: var(--text-secondary); text-decoration: none;">Sign Out</a>
-        </div>
-    </div>
-</footer>
+<?php 
+$portalName = 'Customer Hub';
+require_once __DIR__ . '/../components/footer-portal.php'; 
+?>
 
 <script>
     if (window.lucide) {

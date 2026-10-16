@@ -4,19 +4,22 @@
  * Redesigned to match index.php visual design system & brand aesthetic
  */
 
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../components/alert.php';
 
 initSecureSession();
+
+$base = getAppBasePath();
 
 // Sanitize redirect destination
 $redirect = trim($_GET['redirect'] ?? $_POST['redirect'] ?? '');
 if (!empty($redirect)) {
     if (preg_match('/^(https?:|\/\/)/i', $redirect)) {
-        $redirect = 'dashboard.php';
+        $redirect = $base . 'customer/dashboard.php';
     }
 } else {
-    $redirect = 'dashboard.php';
+    $redirect = $base . 'customer/dashboard.php';
 }
 
 // If already logged in, redirect to dashboard or intended target
@@ -78,13 +81,11 @@ $csrfToken = getCsrfToken();
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer Registration - <?= htmlspecialchars(APP_NAME); ?></title>
-    
-    <link rel="stylesheet" href="assets/css/variables.css">
-    <link rel="stylesheet" href="assets/css/style.css">
-    <script src="assets/js/lucide.min.js"></script>
+    <?php 
+    $pageTitle = 'Customer Registration - ' . APP_NAME;
+    $assetPath = $base . 'assets';
+    require_once __DIR__ . '/../components/head.php'; 
+    ?>
     <style>
         body {
             background-color: var(--bg-page);
@@ -355,54 +356,8 @@ $csrfToken = getCsrfToken();
 </head>
 <body>
 
-    <!-- =======================================================================
-         FLOATING ISLAND NAVBAR (HEADER - IDENTICAL TO INDEX.PHP)
-         ======================================================================= -->
-    <div class="header-wrapper">
-        <header class="site-navbar" id="siteHeader">
-            <!-- Brand -->
-            <div class="nav-brand-group">
-                <a href="index.php" class="brand-link" aria-label="KaamMitra Home">
-                    <div class="brand-mark">
-                        <i data-lucide="wrench" style="width: 20px; height: 20px;"></i>
-                    </div>
-                    <div class="brand-text-block">
-                        <span class="brand-name">Kaam<span>Mitra</span></span>
-                        <span class="brand-domain-tag">kaammitra.in</span>
-                    </div>
-                </a>
-
-                <!-- Location Selector Pill -->
-                <a href="index.php" class="nav-location-pill" style="text-decoration: none;" aria-label="Home city">
-                    <span class="location-live-dot"></span>
-                    <span>Mumbai, MH</span>
-                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
-                </a>
-            </div>
-
-            <!-- Navigation Links -->
-            <nav class="nav-desktop-menu">
-                <ul class="nav-menu-links">
-                    <li><a href="index.php#services">Services</a></li>
-                    <li><a href="index.php#pledge">Rate Card</a></li>
-                    <li><a href="index.php#standard">Why Us</a></li>
-                    <li><a href="index.php#reviews">Reviews</a></li>
-                </ul>
-            </nav>
-
-            <!-- Actions -->
-            <div class="nav-actions">
-                <a href="tel:<?= APP_PHONE; ?>" class="btn btn-outline btn-sm" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;">
-                    <i data-lucide="phone" style="width: 14px; height: 14px; color: var(--orange-500);"></i>
-                    <span><?= APP_PHONE_DISPLAY; ?></span>
-                </a>
-                <a href="index.php" class="btn btn-ghost btn-sm" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-secondary);">
-                    <i data-lucide="arrow-left" style="width: 15px; height: 15px;"></i>
-                    <span>Back to Home</span>
-                </a>
-            </div>
-        </header>
-    </div>
+    <!-- Main Floating Navbar Component -->
+    <?php require_once __DIR__ . '/../components/navbar-main.php'; ?>
 
     <!-- Main Registration Body -->
     <main class="auth-page-main">
@@ -424,25 +379,20 @@ $csrfToken = getCsrfToken();
 
                 <!-- Segmented Tab Switcher (Preserves ?redirect=) -->
                 <div class="auth-segmented-pill">
-                    <a href="login.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" class="auth-segmented-tab">
+                    <a href="<?= $base; ?>customer/login.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" class="auth-segmented-tab">
                         <i data-lucide="log-in" style="width: 15px; height: 15px;"></i>
                         <span>Sign In</span>
                     </a>
-                    <a href="register.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" class="auth-segmented-tab active">
+                    <a href="<?= $base; ?>customer/register.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" class="auth-segmented-tab active">
                         <i data-lucide="user-plus" style="width: 15px; height: 15px;"></i>
                         <span>Create Account</span>
                     </a>
                 </div>
 
                 <!-- Top Error Alert -->
-                <?php if (!empty($topError)): ?>
-                    <div class="auth-alert auth-alert-error" role="alert">
-                        <i data-lucide="alert-circle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
-                        <span><?= htmlspecialchars($topError); ?></span>
-                    </div>
-                <?php endif; ?>
+                <?= renderAlert($topError, 'error'); ?>
 
-                <form action="register.php" method="POST" id="registerForm" novalidate>
+                <form action="<?= $base; ?>customer/register.php" method="POST" id="registerForm" novalidate>
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
                     <input type="hidden" name="redirect" value="<?= htmlspecialchars($redirect); ?>">
 
@@ -727,19 +677,8 @@ $csrfToken = getCsrfToken();
         </div>
     </main>
 
-    <!-- Footer Matching index.php -->
-    <footer style="background: #FFFFFF; border-top: 1px solid var(--border-subtle); padding: 1.5rem 0; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
-        <div style="max-width: 1260px; margin: 0 auto; padding: 0 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
-            <div>
-                &copy; <?= date('Y'); ?> KaamMitra Services India Pvt. Ltd. All rights reserved.
-            </div>
-            <div style="display: flex; gap: 1.5rem; align-items: center;">
-                <a href="index.php" style="color: var(--text-secondary); text-decoration: none;">Home</a>
-                <a href="tel:<?= APP_PHONE; ?>" style="color: var(--text-secondary); text-decoration: none;">Support: <?= APP_PHONE_DISPLAY; ?></a>
-                <a href="login.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" style="color: var(--orange-500); font-weight: 700; text-decoration: none;">Log In</a>
-            </div>
-        </div>
-    </footer>
+    <!-- Main Footer Component -->
+    <?php require_once __DIR__ . '/../components/footer-main.php'; ?>
 
     <script>
         if (window.lucide) {

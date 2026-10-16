@@ -4,6 +4,25 @@
  */
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/config.php';
+
+/**
+ * Detect application base URL prefix (e.g. '/' or '/public/')
+ */
+function getAppBasePath(): string {
+    static $base = null;
+    if ($base !== null) {
+        return $base;
+    }
+    $script = $_SERVER['SCRIPT_NAME'] ?? '';
+    $pos = strpos($script, '/public/');
+    if ($pos !== false) {
+        $base = substr($script, 0, $pos + 8);
+    } else {
+        $base = '/';
+    }
+    return $base;
+}
 
 /**
  * Initialize secure PHP session
@@ -58,7 +77,7 @@ function getLoggedInCustomer(): ?array {
  */
 function requireCustomerAuth(string $redirectUrl = ''): array {
     if (!isCustomerLoggedIn()) {
-        $loginUrl = 'login.php';
+        $loginUrl = getAppBasePath() . 'customer/login.php';
         if ($redirectUrl) {
             $loginUrl .= '?redirect=' . urlencode($redirectUrl);
         }
@@ -69,7 +88,7 @@ function requireCustomerAuth(string $redirectUrl = ''): array {
     $customer = getLoggedInCustomer();
     if (!$customer) {
         logoutCustomer();
-        header("Location: login.php?msg=session_invalid");
+        header("Location: " . getAppBasePath() . "customer/login.php?msg=session_invalid");
         exit;
     }
 
@@ -349,7 +368,7 @@ function getLoggedInPartner(): ?array {
  */
 function requirePartnerAuth(string $redirectUrl = ''): array {
     if (!isPartnerLoggedIn()) {
-        $loginUrl = 'partner-login.php';
+        $loginUrl = getAppBasePath() . 'partner/login.php';
         if ($redirectUrl) {
             $loginUrl .= '?redirect=' . urlencode($redirectUrl);
         }
@@ -360,7 +379,7 @@ function requirePartnerAuth(string $redirectUrl = ''): array {
     $partner = getLoggedInPartner();
     if (!$partner) {
         logoutPartner();
-        header("Location: partner-login.php?msg=session_invalid");
+        header("Location: " . getAppBasePath() . "partner/login.php?msg=session_invalid");
         exit;
     }
 
@@ -647,3 +666,168 @@ function logoutPartner(): void {
         $_SESSION['partner_status']
     );
 }
+
+/* ============================================================================
+   ADMINISTRATOR AUTHENTICATION & SECURITY MANAGEMENT
+   ============================================================================ */
+
+if (!defined('ADMIN_DEFAULT_ID')) {
+    define('ADMIN_DEFAULT_ID', 'Charan');
+}
+if (!defined('ADMIN_DEFAULT_PASSWORD')) {
+    define('ADMIN_DEFAULT_PASSWORD', 'Bharat');
+}
+
+/**
+ * Check if an administrator is currently authenticated
+ * 
+ * @return bool
+ */
+function isAdminLoggedIn(): bool {
+    initSecureSession();
+    return !empty($_SESSION['admin_logged_in']) 
+        && $_SESSION['admin_logged_in'] === true 
+        && !empty($_SESSION['admin_id']) 
+        && strcasecmp($_SESSION['admin_id'], ADMIN_DEFAULT_ID) === 0;
+}
+
+/**
+ * Retrieve the authenticated admin details
+ * 
+ * @return array|null
+ */
+function getLoggedInAdmin(): ?array {
+    if (!isAdminLoggedIn()) {
+        return null;
+    }
+
+    return [
+        'id' => $_SESSION['admin_id'] ?? ADMIN_DEFAULT_ID,
+        'name' => $_SESSION['admin_name'] ?? ADMIN_DEFAULT_ID,
+        'role' => $_SESSION['admin_role'] ?? 'Super Administrator',
+        'login_time' => $_SESSION['admin_login_time'] ?? time(),
+        'ip' => $_SESSION['admin_ip'] ?? ($_SERVER['REMOTE_ADDR'] ?? '127.0.0.1')
+    ];
+}
+
+/**
+ * Protect admin-only routes; strictly redirects unauthenticated visitors
+ * Ensures customers and service providers cannot access admin resources
+ * 
+ * @param string $redirectUrl Target to return to after successful login
+ * @return array Authenticated admin data
+ */
+function requireAdminAuth(string $redirectUrl = ''): array {
+    if (!isAdminLoggedIn()) {
+        $loginUrl = getAppBasePath() . 'admin/index.php';
+        if ($redirectUrl) {
+            $loginUrl .= '?redirect=' . urlencode($redirectUrl);
+        }
+        header("Location: " . $loginUrl);
+        exit;
+    }
+
+    $admin = getLoggedInAdmin();
+    if (!$admin) {
+        logoutAdmin();
+        header("Location: " . getAppBasePath() . "admin/index.php?msg=session_invalid");
+        exit;
+    }
+
+    return $admin;
+}
+
+/**
+ * Authenticate administrator with dedicated Admin ID and Password
+ * Strictly checks admin credentials. Customer and service provider credentials cannot log in here.
+ * 
+ * @param string $adminId
+ * @param string $password
+ * @return array ['success' => bool, 'message' => string]
+ */
+function loginAdmin(string $adminId, string $password): array {
+    initSecureSession();
+
+    $adminId = trim($adminId);
+
+    if (empty($adminId) || empty($password)) {
+        return ['success' => false, 'message' => 'Please enter both Admin ID and Password.'];
+    }
+
+    // Rate limiting for admin login (max 5 attempts in 60s)
+    if (!isset($_SESSION['admin_login_attempts'])) {
+        $_SESSION['admin_login_attempts'] = 0;
+        $_SESSION['admin_last_attempt'] = time();
+    }
+    if ($_SESSION['admin_login_attempts'] >= 5 && (time() - $_SESSION['admin_last_attempt']) < 60) {
+        $remaining = 60 - (time() - $_SESSION['admin_last_attempt']);
+        return [
+            'success' => false,
+            'message' => "Too many failed attempts. Security lock active for {$remaining} seconds."
+        ];
+    }
+
+    // Verify Admin credentials: Admin ID must be Charan and Password Bharat
+    $isValidId = (strcasecmp($adminId, ADMIN_DEFAULT_ID) === 0);
+    $isValidPass = hash_equals(ADMIN_DEFAULT_PASSWORD, $password);
+
+    if (!$isValidId || !$isValidPass) {
+        $_SESSION['admin_login_attempts']++;
+        $_SESSION['admin_last_attempt'] = time();
+        return [
+            'success' => false,
+            'message' => 'Invalid Admin ID or Password. Access denied.'
+        ];
+    }
+
+    // Reset attempts on successful login
+    $_SESSION['admin_login_attempts'] = 0;
+
+    // Regenerate session ID to prevent session fixation attacks
+    session_regenerate_id(true);
+
+    // Isolate admin session from customer and partner sessions
+    unset(
+        $_SESSION['customer_id'],
+        $_SESSION['customer_name'],
+        $_SESSION['customer_mobile'],
+        $_SESSION['customer_email'],
+        $_SESSION['customer_city'],
+        $_SESSION['partner_id'],
+        $_SESSION['partner_name'],
+        $_SESSION['partner_mobile'],
+        $_SESSION['partner_email'],
+        $_SESSION['partner_skill'],
+        $_SESSION['partner_city'],
+        $_SESSION['partner_status']
+    );
+
+    $_SESSION['admin_logged_in'] = true;
+    $_SESSION['admin_id'] = ADMIN_DEFAULT_ID;
+    $_SESSION['admin_name'] = ADMIN_DEFAULT_ID;
+    $_SESSION['admin_role'] = 'Super Administrator';
+    $_SESSION['admin_login_time'] = time();
+    $_SESSION['admin_ip'] = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+    return [
+        'success' => true,
+        'message' => 'Admin authentication successful! Access granted.',
+        'admin' => getLoggedInAdmin()
+    ];
+}
+
+/**
+ * Log out administrator and terminate admin session securely
+ */
+function logoutAdmin(): void {
+    initSecureSession();
+    unset(
+        $_SESSION['admin_logged_in'],
+        $_SESSION['admin_id'],
+        $_SESSION['admin_name'],
+        $_SESSION['admin_role'],
+        $_SESSION['admin_login_time'],
+        $_SESSION['admin_ip']
+    );
+}
+

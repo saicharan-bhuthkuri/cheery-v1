@@ -1,22 +1,25 @@
 <?php
 /**
- * KaamMitra - Customer Login
- * Redesigned to match index.php visual design system & brand aesthetic
+ * KaamMitra - Customer Login Portal
+ * Reorganized under /customer/ with shared reusable components
  */
 
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/../includes/config.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../components/alert.php';
 
 initSecureSession();
+
+$base = getAppBasePath();
 
 // Sanitize redirect destination
 $redirect = trim($_GET['redirect'] ?? $_POST['redirect'] ?? '');
 if (!empty($redirect)) {
     if (preg_match('/^(https?:|\/\/)/i', $redirect)) {
-        $redirect = 'dashboard.php';
+        $redirect = $base . 'customer/dashboard.php';
     }
 } else {
-    $redirect = 'dashboard.php';
+    $redirect = $base . 'customer/dashboard.php';
 }
 
 // If already logged in, redirect immediately
@@ -58,17 +61,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $csrfToken = getCsrfToken();
+$pageTitle = 'Customer Login - ' . APP_NAME;
+$assetPath = $base . 'assets';
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Customer Login - <?= htmlspecialchars(APP_NAME); ?></title>
-    
-    <link rel="stylesheet" href="assets/css/variables.css">
-    <link rel="stylesheet" href="assets/css/style.css">
-    <script src="assets/js/lucide.min.js"></script>
+    <?php require_once __DIR__ . '/../components/head.php'; ?>
     <style>
         body {
             background-color: var(--bg-page);
@@ -98,18 +97,12 @@ $csrfToken = getCsrfToken();
         }
 
         .auth-card {
-            background: #FFFFFF;
-            border-radius: 24px;
+            background: var(--bg-surface);
+            border-radius: var(--radius-xl);
             padding: 2.5rem 2.25rem;
             box-shadow: var(--shadow-card);
             border: 1px solid var(--border-subtle);
-            transition: box-shadow 0.2s ease;
-        }
-        @media (max-width: 540px) {
-            .auth-card {
-                padding: 1.75rem 1.25rem;
-                border-radius: 20px;
-            }
+            position: relative;
         }
 
         .auth-card-header {
@@ -119,26 +112,23 @@ $csrfToken = getCsrfToken();
 
         .auth-segmented-pill {
             display: flex;
-            background: var(--gray-100);
-            border-radius: 12px;
-            padding: 4px;
+            background: var(--bg-surface-alt);
+            padding: 0.35rem;
+            border-radius: var(--radius-full);
             margin-bottom: 1.75rem;
-            border: 1px solid var(--gray-200);
+            border: 1px solid var(--border-subtle);
         }
 
         .auth-segmented-tab {
             flex: 1;
-            padding: 0.65rem 1rem;
             text-align: center;
+            padding: 0.65rem 1rem;
+            border-radius: var(--radius-full);
             font-size: 0.88rem;
-            font-weight: 600;
-            border-radius: 8px;
-            text-decoration: none;
-            transition: all 0.2s ease;
+            font-weight: 700;
             color: var(--text-secondary);
-            border: none;
-            background: transparent;
-            cursor: pointer;
+            text-decoration: none;
+            transition: all var(--transition-fast);
             display: inline-flex;
             align-items: center;
             justify-content: center;
@@ -146,10 +136,9 @@ $csrfToken = getCsrfToken();
         }
 
         .auth-segmented-tab.active {
-            background: #FFFFFF;
+            background: var(--bg-surface);
             color: var(--navy-900);
-            font-weight: 700;
-            box-shadow: 0 2px 8px rgba(10, 19, 37, 0.08);
+            box-shadow: var(--shadow-subtle);
         }
 
         .form-group {
@@ -160,174 +149,78 @@ $csrfToken = getCsrfToken();
             display: block;
             font-size: 0.85rem;
             font-weight: 700;
-            color: var(--navy-900);
             margin-bottom: 0.45rem;
+            color: var(--navy-900);
         }
 
         .input-icon-wrap {
             position: relative;
-        }
-
-        .input-icon-wrap input {
-            width: 100%;
-            height: 48px;
-            border-radius: 12px;
-            border: 1.5px solid var(--border-subtle);
-            background-color: #FFFFFF;
-            padding-left: 2.75rem;
-            padding-right: 2.75rem;
-            font-size: 0.95rem;
-            color: var(--navy-900);
-            font-family: inherit;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        .input-icon-wrap input:focus {
-            outline: none;
-            border-color: var(--orange-500);
-            box-shadow: 0 0 0 3px rgba(255, 102, 0, 0.15);
+            display: flex;
+            align-items: center;
         }
 
         .input-icon-left {
             position: absolute;
             left: 1rem;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--gray-400);
+            color: var(--text-muted);
             pointer-events: none;
             display: flex;
             align-items: center;
+            justify-content: center;
         }
 
-        .input-icon-wrap input:focus + .input-icon-left,
-        .input-icon-wrap:focus-within .input-icon-left {
-            color: var(--orange-500);
+        .input-icon-wrap input {
+            width: 100%;
+            padding: 0.85rem 1rem 0.85rem 2.85rem;
+            border: 1.5px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            font-size: 0.95rem;
+            color: var(--text-primary);
+            background: #FFFFFF;
+            transition: all var(--transition-fast);
+            outline: none;
+            font-family: inherit;
+        }
+
+        .input-icon-wrap input:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(255, 102, 0, 0.15);
         }
 
         .password-toggle-btn {
             position: absolute;
             right: 0.85rem;
-            top: 50%;
-            transform: translateY(-50%);
-            background: transparent;
+            background: none;
             border: none;
-            color: var(--gray-400);
+            color: var(--text-muted);
             cursor: pointer;
             padding: 0.35rem;
             display: flex;
             align-items: center;
-            border-radius: 6px;
-        }
-
-        .password-toggle-btn:hover {
-            color: var(--orange-500);
-        }
-
-        .auth-alert {
-            padding: 0.85rem 1rem;
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
-            font-size: 0.88rem;
-            display: flex;
-            align-items: center;
-            gap: 0.65rem;
-        }
-
-        .auth-alert-error {
-            background: #FEF2F2;
-            border: 1px solid #FCA5A5;
-            color: #DC2626;
-        }
-
-        .auth-alert-success {
-            background: #ECFDF5;
-            border: 1px solid #A7F3D0;
-            color: #059669;
+            justify-content: center;
         }
 
         .trust-strip {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 0.75rem;
+            display: flex;
+            justify-content: space-around;
+            padding-top: 1.75rem;
             margin-top: 1.75rem;
-            padding-top: 1.5rem;
             border-top: 1px solid var(--border-subtle);
-            text-align: center;
-        }
-        @media (max-width: 480px) {
-            .trust-strip {
-                grid-template-columns: 1fr;
-                gap: 0.5rem;
-                text-align: left;
-            }
         }
 
         .trust-item {
-            font-size: 0.75rem;
-            color: var(--text-secondary);
             display: flex;
-            flex-direction: column;
             align-items: center;
-            gap: 0.25rem;
-        }
-        @media (max-width: 480px) {
-            .trust-item {
-                flex-direction: row;
-                gap: 0.4rem;
-            }
+            gap: 0.45rem;
+            font-size: 0.78rem;
+            color: var(--text-secondary);
         }
     </style>
 </head>
 <body>
 
-    <!-- =======================================================================
-         FLOATING ISLAND NAVBAR (HEADER - IDENTICAL TO INDEX.PHP)
-         ======================================================================= -->
-    <div class="header-wrapper">
-        <header class="site-navbar" id="siteHeader">
-            <!-- Brand -->
-            <div class="nav-brand-group">
-                <a href="index.php" class="brand-link" aria-label="KaamMitra Home">
-                    <div class="brand-mark">
-                        <i data-lucide="wrench" style="width: 20px; height: 20px;"></i>
-                    </div>
-                    <div class="brand-text-block">
-                        <span class="brand-name">Kaam<span>Mitra</span></span>
-                        <span class="brand-domain-tag">kaammitra.in</span>
-                    </div>
-                </a>
-
-                <!-- Location Selector Pill -->
-                <a href="index.php" class="nav-location-pill" style="text-decoration: none;" aria-label="Home city">
-                    <span class="location-live-dot"></span>
-                    <span>Mumbai, MH</span>
-                    <i data-lucide="chevron-down" style="width: 14px; height: 14px;"></i>
-                </a>
-            </div>
-
-            <!-- Navigation Links -->
-            <nav class="nav-desktop-menu">
-                <ul class="nav-menu-links">
-                    <li><a href="index.php#services">Services</a></li>
-                    <li><a href="index.php#pledge">Rate Card</a></li>
-                    <li><a href="index.php#standard">Why Us</a></li>
-                    <li><a href="index.php#reviews">Reviews</a></li>
-                </ul>
-            </nav>
-
-            <!-- Actions -->
-            <div class="nav-actions">
-                <a href="tel:<?= APP_PHONE; ?>" class="btn btn-outline btn-sm" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.4rem;">
-                    <i data-lucide="phone" style="width: 14px; height: 14px; color: var(--orange-500);"></i>
-                    <span><?= APP_PHONE_DISPLAY; ?></span>
-                </a>
-                <a href="index.php" class="btn btn-ghost btn-sm" style="text-decoration: none; display: inline-flex; align-items: center; gap: 0.35rem; color: var(--text-secondary);">
-                    <i data-lucide="arrow-left" style="width: 15px; height: 15px;"></i>
-                    <span>Back to Home</span>
-                </a>
-            </div>
-        </header>
-    </div>
+    <!-- Main Floating Navbar Component -->
+    <?php require_once __DIR__ . '/../components/navbar-main.php'; ?>
 
     <!-- Main Auth Form Body -->
     <main class="auth-page-main">
@@ -347,36 +240,24 @@ $csrfToken = getCsrfToken();
                     </p>
                 </div>
 
-                <!-- Segmented Tab Switcher (Preserves ?redirect=) -->
+                <!-- Segmented Tab Switcher -->
                 <div class="auth-segmented-pill">
-                    <a href="login.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" class="auth-segmented-tab active">
+                    <a href="<?= $base; ?>customer/login.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" class="auth-segmented-tab active">
                         <i data-lucide="log-in" style="width: 15px; height: 15px;"></i>
                         <span>Sign In</span>
                     </a>
-                    <a href="register.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" class="auth-segmented-tab">
+                    <a href="<?= $base; ?>customer/register.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" class="auth-segmented-tab">
                         <i data-lucide="user-plus" style="width: 15px; height: 15px;"></i>
                         <span>Create Account</span>
                     </a>
                 </div>
 
-                <!-- Error Alert -->
-                <?php if (!empty($error)): ?>
-                    <div class="auth-alert auth-alert-error" role="alert">
-                        <i data-lucide="alert-circle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
-                        <span><?= htmlspecialchars($error); ?></span>
-                    </div>
-                <?php endif; ?>
-
-                <!-- Success Alert -->
-                <?php if (!empty($successMsg)): ?>
-                    <div class="auth-alert auth-alert-success" role="alert">
-                        <i data-lucide="check-circle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
-                        <span><?= htmlspecialchars($successMsg); ?></span>
-                    </div>
-                <?php endif; ?>
+                <!-- Alerts rendered via reusable alert component -->
+                <?= renderAlert($error, 'error'); ?>
+                <?= renderAlert($successMsg, 'success'); ?>
 
                 <!-- Login Form -->
-                <form action="login.php" method="POST" id="loginForm" novalidate>
+                <form action="<?= $base; ?>customer/login.php" method="POST" id="loginForm" novalidate>
                     <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
                     <input type="hidden" name="redirect" value="<?= htmlspecialchars($redirect); ?>">
 
@@ -442,13 +323,13 @@ $csrfToken = getCsrfToken();
                 <div style="text-align: center; border-top: 1px solid var(--border-subtle); padding-top: 1.25rem;">
                     <p style="color: var(--text-secondary); font-size: 0.9rem; margin: 0;">
                         Don't have an account yet? 
-                        <a href="register.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" style="color: var(--orange-500); font-weight: 800; text-decoration: none;">
+                        <a href="<?= $base; ?>customer/register.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" style="color: var(--orange-500); font-weight: 800; text-decoration: none;">
                             Create Account
                         </a>
                     </p>
                 </div>
 
-                <!-- Brand Assurance Strip (Matches index.php guarantee section) -->
+                <!-- Brand Assurance Strip -->
                 <div class="trust-strip">
                     <div class="trust-item">
                         <i data-lucide="clock" style="width: 16px; height: 16px; color: var(--orange-500);"></i>
@@ -467,19 +348,8 @@ $csrfToken = getCsrfToken();
         </div>
     </main>
 
-    <!-- Footer Matching index.php -->
-    <footer style="background: #FFFFFF; border-top: 1px solid var(--border-subtle); padding: 1.5rem 0; text-align: center; color: var(--text-muted); font-size: 0.85rem;">
-        <div style="max-width: 1260px; margin: 0 auto; padding: 0 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
-            <div>
-                &copy; <?= date('Y'); ?> KaamMitra Services India Pvt. Ltd. All rights reserved.
-            </div>
-            <div style="display: flex; gap: 1.5rem; align-items: center;">
-                <a href="index.php" style="color: var(--text-secondary); text-decoration: none;">Home</a>
-                <a href="tel:<?= APP_PHONE; ?>" style="color: var(--text-secondary); text-decoration: none;">Support: <?= APP_PHONE_DISPLAY; ?></a>
-                <a href="register.php<?= !empty($redirect) ? '?redirect=' . urlencode($redirect) : ''; ?>" style="color: var(--orange-500); font-weight: 700; text-decoration: none;">Sign Up</a>
-            </div>
-        </div>
-    </footer>
+    <!-- Main Footer Component -->
+    <?php require_once __DIR__ . '/../components/footer-main.php'; ?>
 
     <script>
         if (window.lucide) {
