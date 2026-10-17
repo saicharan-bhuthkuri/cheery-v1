@@ -48,7 +48,7 @@ $actionSuccess = '';
 $actionError = $actionError ?? '';
 
 // 2. Handle State-Changing POST Actions
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $csrfToken = $_POST['csrf_token'] ?? '';
     $action = $_POST['action'] ?? '';
 
