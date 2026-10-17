@@ -322,9 +322,113 @@
 }
 
 /* ==========================================================================
-   AUTH & FORM RESPONSIVE HELPERS
+   AUTH & FORM RESPONSIVE HELPERS (TWO-SECTION LAYOUT ADAPTATIONS)
    ========================================================================== */
+@media (max-width: 992px) {
+    .auth-customer-container {
+        grid-template-columns: 1fr !important;
+        gap: 2.5rem !important;
+        max-width: 620px;
+        margin: 0 auto;
+    }
+    .auth-light-heading {
+        font-size: 2.15rem !important;
+    }
+    .auth-split-card {
+        grid-template-columns: 1fr !important;
+        max-width: 680px;
+        margin: 0 auto;
+    }
+    .auth-info-pane {
+        padding: 2.25rem 2rem !important;
+    }
+    .auth-feature-list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+    }
+    .auth-form-pane {
+        padding: 2.5rem 2rem !important;
+        max-height: none !important;
+    }
+}
+
 @media (max-width: 640px) {
+    .auth-customer-layout {
+        padding: 1.5rem 1rem 3.5rem !important;
+    }
+    .auth-white-card {
+        padding: 1.75rem 1.25rem !important;
+        border-radius: 16px !important;
+    }
+    .auth-light-heading {
+        font-size: 1.75rem !important;
+    }
+    .auth-light-subtext {
+        font-size: 0.95rem !important;
+        margin-bottom: 1.75rem !important;
+    }
+    .auth-light-features {
+        gap: 1.15rem !important;
+    }
+    .auth-light-icon-box {
+        width: 38px !important;
+        height: 38px !important;
+    }
+    .auth-main-wrapper,
+    .partner-page-wrap {
+        padding: 1.25rem 0.75rem 3.5rem !important;
+    }
+    .auth-split-card {
+        border-radius: var(--radius-lg, 18px) !important;
+    }
+    .auth-info-pane {
+        padding: 1.75rem 1.25rem !important;
+    }
+    .auth-info-brand {
+        margin-bottom: 1.25rem !important;
+    }
+    .auth-info-hero {
+        margin-bottom: 1.25rem !important;
+    }
+    .auth-info-heading {
+        font-size: 1.35rem !important;
+    }
+    .auth-info-subtext {
+        font-size: 0.85rem !important;
+    }
+    .auth-feature-list {
+        grid-template-columns: 1fr !important;
+        gap: 0.6rem !important;
+        margin-bottom: 1.25rem !important;
+    }
+    .auth-feature-card {
+        padding: 0.75rem !important;
+    }
+    .auth-metrics-row {
+        gap: 0.4rem !important;
+        padding-top: 1rem !important;
+        margin-bottom: 1.25rem !important;
+    }
+    .auth-metric-value {
+        font-size: 0.95rem !important;
+    }
+    .auth-metric-label {
+        font-size: 0.65rem !important;
+    }
+    .auth-testimonial-box {
+        display: none !important; /* Hide quote on mobile to keep top section clean and compact */
+    }
+    .auth-form-pane {
+        padding: 1.75rem 1.25rem !important;
+        max-height: none !important;
+    }
+    .auth-title {
+        font-size: 1.35rem !important;
+    }
+    .auth-subtitle {
+        font-size: 0.85rem !important;
+    }
     .grid-2-cols {
         grid-template-columns: 1fr !important;
         gap: 0 !important;
@@ -334,9 +438,9 @@
         padding: 1.75rem 1.25rem !important;
         border-radius: var(--radius-lg, 16px) !important;
     }
-    .auth-title,
     .partner-title {
-        font-size: 1.3rem !important;
+        font-size: 1.35rem !important;
     }
 }
+
 

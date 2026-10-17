@@ -116,28 +116,94 @@ $csrfToken = getCsrfToken();
     require dirname(__DIR__, 2) . "/components/navbar-main.php"; 
     ?>
 
-    <main class="auth-main-wrapper">
-        <div class="auth-card-island">
+    <main class="auth-customer-layout">
+        <div class="auth-customer-container">
             
-            <div class="auth-card-header">
-                <h1 class="auth-title">Explore Home Services</h1>
-                <p class="auth-subtitle">Sign in or create an account to access vetted doorstep professionals</p>
+            <!-- Left Section: About KaamMitra (Matching Image 2 light visual style) -->
+            <div class="auth-customer-left">
+                <a href="../../index.php" class="auth-back-btn">
+                    <i data-lucide="arrow-left" style="width: 16px; height: 16px;"></i>
+                    <span>Back to Homepage</span>
+                </a>
+
+                <div class="auth-light-badge">
+                    <i data-lucide="sparkles" style="width: 14px; height: 14px;"></i>
+                    <span>VERIFIED DOORSTEP SERVICES</span>
+                </div>
+
+                <h1 class="auth-light-heading">
+                    Effortless Home Repairs With KaamMitra
+                </h1>
+
+                <p class="auth-light-subtext">
+                    Book background-verified electricians, plumbers, AC technicians, and deep cleaners equipped with genuine parts. Transparent digital rate cards and 30-day rework warranty.
+                </p>
+
+                <div class="auth-light-features">
+                    <div class="auth-light-feature-item">
+                        <div class="auth-light-icon-box box-teal">
+                            <i data-lucide="zap" style="width: 20px; height: 20px;"></i>
+                        </div>
+                        <div class="auth-feature-info">
+                            <h4 class="auth-light-feature-title">Rapid Doorstep Booking</h4>
+                            <p class="auth-light-feature-desc">Book in under 60 seconds with instant technician dispatch to your exact address.</p>
+                        </div>
+                    </div>
+
+                    <div class="auth-light-feature-item">
+                        <div class="auth-light-icon-box box-indigo">
+                            <i data-lucide="shield-check" style="width: 20px; height: 20px;"></i>
+                        </div>
+                        <div class="auth-feature-info">
+                            <h4 class="auth-light-feature-title">Trusted &amp; Verified Experts</h4>
+                            <p class="auth-feature-desc">Every service mitra undergoes police background checks and biometric Aadhaar validation.</p>
+                        </div>
+                    </div>
+
+                    <div class="auth-light-feature-item">
+                        <div class="auth-light-icon-box box-coral">
+                            <i data-lucide="navigation" style="width: 20px; height: 20px;"></i>
+                        </div>
+                        <div class="auth-feature-info">
+                            <h4 class="auth-light-feature-title">Live GPS Service Tracking</h4>
+                            <p class="auth-feature-desc">Monitor technician arrival in real-time, call your pro directly, and pay cashless.</p>
+                        </div>
+                    </div>
+
+                    <div class="auth-light-feature-item">
+                        <div class="auth-light-icon-box box-purple">
+                            <i data-lucide="badge-check" style="width: 20px; height: 20px;"></i>
+                        </div>
+                        <div class="auth-feature-info">
+                            <h4 class="auth-light-feature-title">30-Day Work Warranty</h4>
+                            <p class="auth-light-feature-desc">Complete peace of mind. Free doorstep re-inspection and rework if you're not satisfied.</p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <!-- Tab Switcher (Login vs Register) -->
-            <div class="auth-tabs-nav" role="tablist">
-                <button type="button" class="auth-tab-btn <?= $activeTab === 'login' ? 'active' : ''; ?>" id="tabLoginBtn" role="tab" aria-selected="<?= $activeTab === 'login' ? 'true' : 'false'; ?>">
-                    <i data-lucide="log-in" style="width: 15px; height: 15px; margin-right: 0.4rem;"></i>
-                    <span>Sign In</span>
-                </button>
-                <button type="button" class="auth-tab-btn <?= $activeTab === 'register' ? 'active' : ''; ?>" id="tabRegisterBtn" role="tab" aria-selected="<?= $activeTab === 'register' ? 'true' : 'false'; ?>">
-                    <i data-lucide="user-plus" style="width: 15px; height: 15px; margin-right: 0.4rem;"></i>
-                    <span>Create Account</span>
-                </button>
-            </div>
+            <!-- Right Section: White Form Card (Matching Image 2) -->
+            <div class="auth-customer-right">
+                <div class="auth-white-card">
+                    <div class="auth-card-top-row">
+                        <h2 class="auth-card-heading">Welcome to KaamMitra</h2>
+                        <p class="auth-card-subheading">Sign in or create an account to access vetted doorstep professionals</p>
+                    </div>
 
-            <!-- TAB 1: LOGIN FORM -->
-            <div id="loginTabContent" style="display: <?= $activeTab === 'login' ? 'block' : 'none'; ?>;">
+                    <!-- Tab Switcher (Login vs Register) -->
+                    <div class="auth-tabs-nav" role="tablist">
+                    <button type="button" class="auth-tab-btn <?= $activeTab === 'login' ? 'active' : ''; ?>" id="tabLoginBtn" role="tab" aria-selected="<?= $activeTab === 'login' ? 'true' : 'false'; ?>">
+                        <i data-lucide="log-in" style="width: 15px; height: 15px; margin-right: 0.4rem;"></i>
+                        <span>Sign In</span>
+                    </button>
+                    <button type="button" class="auth-tab-btn <?= $activeTab === 'register' ? 'active' : ''; ?>" id="tabRegisterBtn" role="tab" aria-selected="<?= $activeTab === 'register' ? 'true' : 'false'; ?>">
+                        <i data-lucide="user-plus" style="width: 15px; height: 15px; margin-right: 0.4rem;"></i>
+                        <span>Create Account</span>
+                    </button>
+                </div>
+
+                <!-- TAB 1: LOGIN FORM -->
+                <div id="loginTabContent" style="display: <?= $activeTab === 'login' ? 'block' : 'none'; ?>;">
                 <?php if (!empty($loginError)): ?>
                     <div class="alert-box alert-error" role="alert">
                         <i data-lucide="alert-circle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
@@ -360,20 +426,24 @@ $csrfToken = getCsrfToken();
             </div>
 
             <!-- Join as Service Provider Callout -->
-            <div class="partner-switch-callout">
+            <div class="cross-portal-callout">
                 <span>Looking to work with us?</span>
                 <a href="../partner/register.php">
                     <span>Join as a Service Provider</span>
-                    <i data-lucide="arrow-up-right" style="width: 13px; height: 13px;"></i>
+                    <i data-lucide="arrow-up-right" style="width: 14px; height: 14px;"></i>
                 </a>
             </div>
 
-        </div>
+                </div> <!-- /.auth-white-card -->
+            </div> <!-- /.auth-customer-right -->
+        </div> <!-- /.auth-customer-container -->
     </main>
+    
 
-    <footer style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; border-top: 1px solid var(--border-light);">
-        &copy; <?= date('Y'); ?> KaamMitra Technologies Private Limited. All rights reserved.
-    </footer>
+    <?php 
+    $base = '../../';
+    require dirname(__DIR__, 2) . "/components/footer-main.php"; 
+    ?>
 
     <script src="../../assets/js/core.js" defer></script>
     <script src="../../assets/js/navbar.js" defer></script>

@@ -48,16 +48,35 @@
 }
 
 [data-theme="dark"] .form-control,
-[data-theme="dark"] .select-control {
+[data-theme="dark"] .select-control,
+[data-theme="dark"] .custom-select-trigger {
     background-color: var(--bg-surface-alt);
     border-color: var(--border-light);
     color: var(--text-heading);
 }
 
 [data-theme="dark"] .form-control:focus,
-[data-theme="dark"] .select-control:focus {
-    background-color: var(--bg-surface-alt);
-    border-color: var(--border-focus);
+[data-theme="dark"] .select-control:focus,
+[data-theme="dark"] .custom-select-trigger:focus-visible,
+[data-theme="dark"] .custom-select-container.is-open .custom-select-trigger {
+    background-color: var(--bg-surface);
+    border-color: var(--brand-coral);
+}
+
+[data-theme="dark"] .custom-select-menu {
+    background: #0D1526;
+    border-color: #1E293B;
+    box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="dark"] .custom-select-option {
+    color: #94A3B8;
+}
+
+[data-theme="dark"] .custom-select-option:hover,
+[data-theme="dark"] .custom-select-option.is-selected {
+    background-color: rgba(255, 85, 0, 0.16);
+    color: #FF7D26;
 }
 
 [data-theme="dark"] .footer {

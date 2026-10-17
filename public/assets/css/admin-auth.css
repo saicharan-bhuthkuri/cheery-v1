@@ -1,0 +1,262 @@
+/**
+ * KaamMitra - Dedicated Admin Authentication Stylesheet (admin-auth.css)
+ * Matches the light two-column design of customer and provider authentication
+ * Background: #F8FAFC, Typography: Plus Jakarta Sans, Cards: Elevated White Card
+ */
+
+.admin-auth-layout {
+    min-height: calc(100vh - 72px);
+    background-color: var(--bg-page, #F8FAFC);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1.5rem 5rem;
+    position: relative;
+    box-sizing: border-box;
+}
+
+.admin-auth-container {
+    width: 100%;
+    max-width: 1160px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr);
+    gap: 3.5rem;
+    align-items: center;
+}
+
+/* -------------------------------------------------------------------------
+   Left Informational Security Section
+------------------------------------------------------------------------- */
+.admin-auth-left {
+    display: flex;
+    flex-direction: column;
+    padding-right: 1rem;
+}
+
+.admin-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--text-muted, #64748B);
+    text-decoration: none;
+    margin-bottom: 1.5rem;
+    padding: 0.4rem 0.85rem;
+    background: #FFFFFF;
+    border: 1px solid var(--border-light, #E2E8F0);
+    border-radius: var(--radius-full, 9999px);
+    width: fit-content;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    transition: all 0.2s ease;
+}
+
+.admin-back-btn:hover {
+    color: var(--brand-coral, #FF5500);
+    border-color: rgba(255, 85, 0, 0.3);
+    transform: translateX(-3px);
+}
+
+.admin-light-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: rgba(15, 23, 42, 0.06);
+    color: var(--brand-navy, #090D16);
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    font-size: 0.725rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.35rem 0.85rem;
+    border-radius: var(--radius-full, 9999px);
+    width: fit-content;
+    margin-bottom: 1.25rem;
+}
+
+.admin-light-heading {
+    font-size: 2.35rem;
+    font-weight: 800;
+    color: var(--brand-navy, #090D16);
+    line-height: 1.2;
+    margin: 0 0 1rem;
+    letter-spacing: -0.025em;
+}
+
+.admin-light-subtext {
+    font-size: 1rem;
+    color: var(--text-muted, #64748B);
+    line-height: 1.6;
+    margin: 0 0 2rem;
+}
+
+.admin-security-features {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.admin-security-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.admin-icon-box {
+    width: 44px;
+    height: 44px;
+    border-radius: var(--radius-md, 12px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.admin-icon-box.box-indigo {
+    background: #EEF2FF;
+    color: #4F46E5;
+}
+
+.admin-icon-box.box-teal {
+    background: #ECFDF5;
+    color: #059669;
+}
+
+.admin-icon-box.box-purple {
+    background: #F5F3FF;
+    color: #7C3AED;
+}
+
+.admin-icon-box.box-coral {
+    background: #FFF4ED;
+    color: #EA580C;
+}
+
+.admin-feature-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-feature-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--brand-navy, #090D16);
+    margin: 0 0 0.25rem;
+}
+
+.admin-feature-desc {
+    font-size: 0.85rem;
+    color: var(--text-muted, #64748B);
+    line-height: 1.5;
+    margin: 0;
+}
+
+/* -------------------------------------------------------------------------
+   Right Section: White Login Card
+------------------------------------------------------------------------- */
+.admin-auth-right {
+    width: 100%;
+}
+
+.admin-white-card {
+    background: #FFFFFF;
+    border: 1px solid var(--border-light, #E2E8F0);
+    border-radius: 20px;
+    padding: 2.5rem 2.25rem;
+    box-shadow: 0 10px 30px rgba(9, 13, 22, 0.05), 0 1px 3px rgba(0, 0, 0, 0.02);
+    position: relative;
+}
+
+.admin-card-header {
+    margin-bottom: 2rem;
+    text-align: left;
+}
+
+.admin-card-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: rgba(255, 85, 0, 0.1);
+    color: var(--brand-coral, #FF5500);
+    margin-bottom: 1rem;
+}
+
+.admin-card-title {
+    font-size: 1.65rem;
+    font-weight: 800;
+    color: var(--brand-navy, #090D16);
+    margin: 0 0 0.4rem;
+    letter-spacing: -0.02em;
+}
+
+.admin-card-subtitle {
+    font-size: 0.925rem;
+    color: var(--text-muted, #64748B);
+    margin: 0;
+}
+
+/* Security Notice Box at Bottom of Card */
+.admin-security-notice {
+    margin-top: 1.75rem;
+    padding: 0.85rem 1rem;
+    border-radius: 10px;
+    background: #F8FAFC;
+    border: 1px solid var(--border-light, #E2E8F0);
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-size: 0.8rem;
+    color: var(--text-muted, #64748B);
+    line-height: 1.4;
+}
+
+.admin-security-notice i {
+    color: var(--brand-navy, #090D16);
+    flex-shrink: 0;
+}
+
+/* -------------------------------------------------------------------------
+   Responsive Tweaks
+------------------------------------------------------------------------- */
+@media (max-width: 960px) {
+    .admin-auth-container {
+        grid-template-columns: 1fr;
+        gap: 2.5rem;
+    }
+
+    .admin-auth-left {
+        padding-right: 0;
+        text-align: left;
+    }
+
+    .admin-light-heading {
+        font-size: 1.95rem;
+    }
+
+    .admin-white-card {
+        padding: 2rem 1.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-auth-layout {
+        padding: 1.5rem 1rem 3.5rem;
+    }
+
+    .admin-light-heading {
+        font-size: 1.65rem;
+    }
+
+    .admin-security-features {
+        gap: 1rem;
+    }
+
+    .admin-white-card {
+        padding: 1.75rem 1.25rem;
+        border-radius: 16px;
+    }
+}

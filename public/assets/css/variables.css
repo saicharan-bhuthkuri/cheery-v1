@@ -117,10 +117,30 @@
     padding: 0;
 }
 
+/* ==========================================================================
+   SCROLLBAR SUPPRESSION (SEAMLESS CLEAN VIEWPORT)
+   ========================================================================== */
 html {
     scroll-behavior: smooth;
     font-size: 16px;
     -webkit-text-size-adjust: 100%;
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important; /* IE and Edge */
+}
+
+/* Hide scrollbar for Chrome, Safari, Opera, Edge */
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+}
+
+*, *::before, *::after {
+    scrollbar-width: none !important;
+    -ms-overflow-style: none !important;
 }
 
 body {
@@ -128,6 +148,9 @@ body {
     background-color: var(--bg-page);
     color: var(--text-secondary);
     line-height: 1.6;
+    overflow-x: hidden;
+    scrollbar-width: none !important; /* Firefox */
+    -ms-overflow-style: none !important; /* IE and Edge */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
 }

@@ -132,6 +132,8 @@
     position: relative;
     display: flex;
     align-items: center;
+    width: 100%;
+    min-width: 0;
 }
 
 .input-icon-left {
@@ -141,10 +143,12 @@
     display: flex;
     align-items: center;
     pointer-events: none;
+    z-index: 2;
 }
 
 .input-control {
     width: 100%;
+    min-width: 0;
     padding: 0.75rem 1rem 0.75rem 2.75rem;
     font-size: 0.95rem;
     font-family: inherit;
@@ -154,6 +158,7 @@
     color: var(--text-primary, #090D16);
     outline: none;
     transition: all 0.2s ease;
+    box-sizing: border-box;
 }
 
 .input-control:focus {
@@ -167,25 +172,208 @@
     background: #FEF2F2;
 }
 
-/* Select Control */
+/* ==========================================================================
+   SELECT CONTROL (NATIVE & ENHANCED)
+   ========================================================================== */
 .select-control {
     width: 100%;
-    padding: 0.75rem 1rem;
+    min-width: 0;
+    padding: 0.75rem 2.5rem 0.75rem 1rem;
     font-size: 0.92rem;
     font-family: inherit;
     border: 1.5px solid var(--border-light, #E2E8F0);
     border-radius: var(--radius-md, 12px);
-    background: var(--bg-surface-alt, #F8FAFC);
+    background-color: var(--bg-surface-alt, #F8FAFC);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 1rem center;
+    background-size: 16px;
     color: var(--text-primary, #090D16);
     outline: none;
     transition: all 0.2s ease;
     cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-sizing: border-box;
+}
+
+.input-icon-wrap .select-control {
+    padding-left: 2.75rem;
 }
 
 .select-control:focus {
     border-color: var(--brand-coral, #FF5500);
-    background: #FFFFFF;
+    background-color: #FFFFFF;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23FF5500' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     box-shadow: 0 0 0 3px rgba(255, 85, 0, 0.12);
+}
+
+.select-control option {
+    background-color: #FFFFFF;
+    color: #090D16;
+    padding: 0.75rem 1rem;
+    font-size: 0.92rem;
+    font-family: inherit;
+    line-height: 1.5;
+}
+
+/* ==========================================================================
+   CUSTOM STYLED SELECT DROPDOWN (PREMIUM UI ENHANCEMENT)
+   ========================================================================== */
+.visually-hidden-select {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}
+
+.custom-select-container {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    min-width: 0;
+}
+
+.custom-select-trigger {
+    width: 100%;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.75rem 0.85rem 0.75rem 2.75rem;
+    font-size: 0.92rem;
+    font-family: inherit;
+    font-weight: 500;
+    border: 1.5px solid var(--border-light, #E2E8F0);
+    border-radius: var(--radius-md, 12px);
+    background-color: var(--bg-surface-alt, #F8FAFC);
+    color: var(--text-primary, #090D16);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-align: left;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.custom-select-trigger:hover {
+    border-color: #CBD5E1;
+    background-color: #F1F5F9;
+}
+
+.custom-select-container.is-open .custom-select-trigger,
+.custom-select-trigger:focus-visible {
+    border-color: var(--brand-coral, #FF5500);
+    background-color: #FFFFFF;
+    box-shadow: 0 0 0 3px rgba(255, 85, 0, 0.12);
+}
+
+.custom-select-label {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text-primary, #090D16);
+}
+
+.custom-select-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748B;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), color 0.2s ease;
+    flex-shrink: 0;
+    margin-left: 0.25rem;
+}
+
+.custom-select-container.is-open .custom-select-arrow {
+    transform: rotate(180deg);
+    color: var(--brand-coral, #FF5500);
+}
+
+.custom-select-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    min-width: 100%;
+    width: max-content;
+    max-width: min(440px, 90vw);
+    background: #FFFFFF;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 14px;
+    box-shadow: 0 16px 36px -6px rgba(9, 13, 22, 0.14), 0 4px 12px rgba(0, 0, 0, 0.05);
+    padding: 0.45rem;
+    z-index: 999;
+    list-style: none;
+    margin: 0;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(6px);
+    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s;
+    pointer-events: none;
+    max-height: 290px;
+    overflow-y: auto;
+}
+
+.grid-2-cols > :nth-child(2) .custom-select-menu {
+    left: auto;
+    right: 0;
+}
+
+.custom-select-container.is-open .custom-select-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.custom-select-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.65rem 0.9rem;
+    border-radius: 9px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: #334155;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.custom-select-option:hover {
+    background-color: #FFF4ED;
+    color: var(--brand-coral, #FF5500);
+    font-weight: 600;
+}
+
+.custom-select-option.is-selected {
+    background-color: #FFF4ED;
+    color: var(--brand-coral, #FF5500);
+    font-weight: 700;
+}
+
+.custom-select-check {
+    display: none;
+    color: var(--brand-coral, #FF5500);
+    flex-shrink: 0;
+}
+
+.custom-select-option.is-selected .custom-select-check {
+    display: flex;
+    align-items: center;
 }
 
 /* Password Toggle Action */

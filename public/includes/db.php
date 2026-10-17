@@ -112,7 +112,58 @@ function ensureDatabaseSchema(PDO $pdo): void {
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
 
-        // 3. Safe Column Additions for Existing Tables
+        // 3. Ensure Admins Table Exists
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `admins` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `username` VARCHAR(50) NOT NULL UNIQUE,
+                `email` VARCHAR(150) DEFAULT NULL,
+                `full_name` VARCHAR(150) DEFAULT NULL,
+                `password_hash` VARCHAR(255) NOT NULL,
+                `role` VARCHAR(50) NOT NULL DEFAULT 'admin',
+                `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                `last_login_at` DATETIME DEFAULT NULL,
+                INDEX (`username`),
+                INDEX (`role`),
+                INDEX (`is_active`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ");
+
+        // 4. Ensure Admin Audit Logs Table Exists
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `admin_audit_logs` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `admin_id` INT NULL,
+                `admin_username` VARCHAR(100) NULL,
+                `action` VARCHAR(100) NOT NULL,
+                `target_type` VARCHAR(50) DEFAULT NULL,
+                `target_id` VARCHAR(100) DEFAULT NULL,
+                `details` TEXT DEFAULT NULL,
+                `ip_address` VARCHAR(45) DEFAULT NULL,
+                `user_agent` VARCHAR(255) DEFAULT NULL,
+                `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX (`admin_id`),
+                INDEX (`action`),
+                INDEX (`created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ");
+
+        // 5. Ensure Admin Login Attempts Table Exists (Rate Limiting)
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS `admin_login_attempts` (
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
+                `ip_address` VARCHAR(45) NOT NULL,
+                `username` VARCHAR(100) NOT NULL,
+                `attempt_time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `is_success` TINYINT(1) NOT NULL DEFAULT 0,
+                INDEX (`ip_address`, `attempt_time`),
+                INDEX (`username`, `attempt_time`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ");
+
+        // 6. Safe Column Additions for Existing Tables
         $columnsToCheck = [
             'customers' => [
                 'terms_accepted' => "TINYINT(1) NOT NULL DEFAULT 0",
@@ -121,21 +172,64 @@ function ensureDatabaseSchema(PDO $pdo): void {
             'service_providers' => [
                 'terms_accepted' => "TINYINT(1) NOT NULL DEFAULT 0",
                 'terms_accepted_at' => "DATETIME DEFAULT NULL"
+            ],
+            'admins' => [
+                'last_login_at' => "DATETIME DEFAULT NULL",
+                'role' => "VARCHAR(50) NOT NULL DEFAULT 'admin'",
+                'is_active' => "TINYINT(1) NOT NULL DEFAULT 1"
             ]
         ];
 
+        try {
+            $pdo->exec("ALTER TABLE `admins` MODIFY COLUMN `email` VARCHAR(150) NULL DEFAULT NULL;");
+            $pdo->exec("ALTER TABLE `admins` MODIFY COLUMN `full_name` VARCHAR(150) NULL DEFAULT NULL;");
+        } catch (Throwable $e) {}
+
         foreach ($columnsToCheck as $table => $cols) {
-            foreach ($cols as $colName => $colDef) {
-                try {
-                    $stmt = $pdo->prepare("SHOW COLUMNS FROM `{$table}` LIKE ?");
-                    $stmt->execute([$colName]);
-                    if (!$stmt->fetch()) {
+            try {
+                $existingCols = $pdo->query("SHOW COLUMNS FROM `{$table}`")->fetchAll(PDO::FETCH_COLUMN);
+                foreach ($cols as $colName => $colDef) {
+                    if (!in_array($colName, $existingCols, true)) {
                         $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `{$colName}` {$colDef};");
                     }
-                } catch (Throwable $e) {
-                    // Ignore column check exceptions
+                }
+            } catch (Throwable $e) {
+                error_log("Column check error for {$table}: " . $e->getMessage());
+            }
+        }
+
+        // Sync last_login to last_login_at in admins if present
+        try {
+            $adminCols = $pdo->query("SHOW COLUMNS FROM `admins`")->fetchAll(PDO::FETCH_COLUMN);
+            if (in_array('last_login', $adminCols, true)) {
+                $pdo->exec("UPDATE `admins` SET `last_login_at` = `last_login` WHERE `last_login_at` IS NULL AND `last_login` IS NOT NULL;");
+            }
+        } catch (Throwable $e) {}
+
+        // Safe reviewed role normalization for existing admin records
+        // Never grant Super Admin automatically to existing admins; only explicit Charan account is Super Admin
+        try {
+            $pdo->exec("UPDATE `admins` SET `role` = 'admin' WHERE `role` IN ('Super Admin', 'Admin') AND `username` != 'Charan';");
+        } catch (Throwable $e) {}
+
+        // 7. Initial Super Admin Account Creation (Charan)
+        // Created only once if account does not exist. Never resets password if exists.
+        try {
+            $checkCharan = $pdo->prepare("SELECT `id` FROM `admins` WHERE `username` = ? LIMIT 1");
+            $checkCharan->execute(['Charan']);
+            if (!$checkCharan->fetch()) {
+                $initPass = getenv('INITIAL_SUPERADMIN_PASSWORD') ?: '';
+                if (!empty($initPass)) {
+                    $initialHash = password_hash($initPass, PASSWORD_DEFAULT);
+                    $initStmt = $pdo->prepare("
+                        INSERT INTO `admins` (`username`, `email`, `full_name`, `password_hash`, `role`, `is_active`, `created_at`)
+                        VALUES (?, ?, ?, ?, 'super_admin', 1, NOW())
+                    ");
+                    $initStmt->execute(['Charan', 'charan@kaammitra.in', 'Charan (Super Admin)', $initialHash]);
                 }
             }
+        } catch (Throwable $e) {
+            error_log("Failed to seed initial Super Admin: " . $e->getMessage());
         }
 
         $migrated = true;

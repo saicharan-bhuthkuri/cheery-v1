@@ -11,10 +11,14 @@ require_once __DIR__ . '/db.php';
  */
 function initSecureSession(): void {
     if (session_status() === PHP_SESSION_NONE) {
-        ini_set('session.cookie_httponly', '1');
-        ini_set('session.use_only_cookies', '1');
-        ini_set('session.cookie_samesite', 'Lax');
-        session_start();
+        if (!headers_sent()) {
+            ini_set('session.cookie_httponly', '1');
+            ini_set('session.use_only_cookies', '1');
+            ini_set('session.cookie_samesite', 'Lax');
+            session_start();
+        } elseif (session_status() === PHP_SESSION_NONE) {
+            @session_start();
+        }
     }
 }
 

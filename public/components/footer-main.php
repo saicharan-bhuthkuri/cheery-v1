@@ -8,7 +8,7 @@ if (!defined('APP_NAME')) {
     require_once __DIR__ . '/../config.php';
 }
 
-$base = function_exists('getAppBasePath') ? getAppBasePath() : './';
+$base = $base ?? (function_exists('getAppBasePath') ? getAppBasePath() : './');
 
 ?>
 <!-- Footer -->
@@ -48,6 +48,7 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
                     <li><a href="<?= $base; ?>index.php#reviews">Verified Reviews</a></li>
                     <li><a href="<?= $base; ?>index.php#faq">Frequently Asked Questions</a></li>
                     <li><a href="<?= $base; ?>index.php#contact">24/7 Helpline Support</a></li>
+                    <li><a href="<?= $base; ?>auth/admin/login.php" style="color: rgba(255,255,255,0.75);"><i data-lucide="shield" style="width: 14px; height: 14px; display: inline-block; vertical-align: middle; margin-right: 4px;"></i>Admin Portal</a></li>
                 </ul>
             </div>
 
@@ -66,10 +67,11 @@ $base = function_exists('getAppBasePath') ? getAppBasePath() : './';
 
         <div class="footer-bottom-row">
             <div>&copy; <?= date('Y'); ?> KaamMitra Technologies Private Limited. All rights reserved.</div>
-            <div style="display: flex; gap: 1.5rem;">
+            <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
                 <a href="javascript:void(0)" style="color: rgba(255,255,255,0.6); text-decoration: none;">Privacy Policy</a>
                 <a href="javascript:void(0)" style="color: rgba(255,255,255,0.6); text-decoration: none;">Terms of Service</a>
                 <a href="javascript:void(0)" style="color: rgba(255,255,255,0.6); text-decoration: none;">Security &amp; Safety</a>
+                <a href="<?= $base; ?>auth/admin/login.php" style="color: rgba(255,255,255,0.6); text-decoration: none;">Admin Login</a>
             </div>
         </div>
     </div>

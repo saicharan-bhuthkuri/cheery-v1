@@ -10,6 +10,7 @@
         initAuthTabs();
         initTermsCheckboxGates();
         initPasswordToggles();
+        initCustomSelects();
     });
 
     // 1. Customer Login & Register Tab Switching
@@ -41,6 +42,9 @@
                 loginContent.style.display = 'block';
                 registerContent.style.display = 'none';
             }
+            if (window.lucide) {
+                window.lucide.createIcons();
+            }
         }
 
         tabLoginBtn.addEventListener('click', function() { setTab('login'); });
@@ -50,6 +54,14 @@
         }
         if (switchToLoginLink) {
             switchToLoginLink.addEventListener('click', function() { setTab('login'); });
+        }
+
+        // Check hash or URL search param
+        var params = new URLSearchParams(window.location.search);
+        if (params.get('tab') === 'register' || window.location.hash === '#register') {
+            setTab('register');
+        } else if (params.get('tab') === 'login' || window.location.hash === '#login') {
+            setTab('login');
         }
     }
 
@@ -94,5 +106,171 @@
                 }
             });
         });
+    }
+
+    // 4. Custom Select Dropdown UI
+    function initCustomSelects() {
+        var selects = document.querySelectorAll('.input-icon-wrap select.select-control');
+        selects.forEach(function(select) {
+            if (select.dataset.customized === 'true') return;
+            select.dataset.customized = 'true';
+
+            var wrap = select.closest('.input-icon-wrap');
+            if (!wrap) return;
+
+            // Container
+            var container = document.createElement('div');
+            container.className = 'custom-select-container';
+
+            // Trigger button
+            var trigger = document.createElement('button');
+            trigger.type = 'button';
+            trigger.className = 'custom-select-trigger';
+            trigger.setAttribute('aria-haspopup', 'listbox');
+            trigger.setAttribute('aria-expanded', 'false');
+
+            var labelSpan = document.createElement('span');
+            labelSpan.className = 'custom-select-label';
+            
+            var selectedOption = select.options[select.selectedIndex];
+            labelSpan.textContent = selectedOption ? selectedOption.text : 'Select...';
+
+            var arrowSpan = document.createElement('span');
+            arrowSpan.className = 'custom-select-arrow';
+            arrowSpan.innerHTML = '<i data-lucide="chevron-down" style="width: 16px; height: 16px;"></i>';
+
+            trigger.appendChild(labelSpan);
+            trigger.appendChild(arrowSpan);
+
+            // Dropdown Menu
+            var menu = document.createElement('ul');
+            menu.className = 'custom-select-menu';
+            menu.setAttribute('role', 'listbox');
+
+            function populateOptions() {
+                menu.innerHTML = '';
+                Array.from(select.options).forEach(function(opt) {
+                    var li = document.createElement('li');
+                    li.className = 'custom-select-option' + (opt.selected ? ' is-selected' : '');
+                    li.setAttribute('role', 'option');
+                    li.setAttribute('aria-selected', opt.selected ? 'true' : 'false');
+                    li.dataset.value = opt.value;
+
+                    var optText = document.createElement('span');
+                    optText.textContent = opt.text;
+                    li.appendChild(optText);
+
+                    var checkIcon = document.createElement('span');
+                    checkIcon.className = 'custom-select-check';
+                    checkIcon.innerHTML = '<i data-lucide="check" style="width: 15px; height: 15px;"></i>';
+                    li.appendChild(checkIcon);
+
+                    li.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        select.value = opt.value;
+                        labelSpan.textContent = opt.text;
+                        closeMenu();
+                        updateSelectedClass();
+                        select.dispatchEvent(new Event('change', { bubbles: true }));
+                    });
+
+                    menu.appendChild(li);
+                });
+            }
+
+            function updateSelectedClass() {
+                var items = menu.querySelectorAll('.custom-select-option');
+                items.forEach(function(item) {
+                    var isSel = item.dataset.value === select.value;
+                    item.classList.toggle('is-selected', isSel);
+                    item.setAttribute('aria-selected', isSel ? 'true' : 'false');
+                });
+            }
+
+            populateOptions();
+
+            function openMenu() {
+                document.querySelectorAll('.custom-select-container.is-open').forEach(function(c) {
+                    if (c !== container) {
+                        c.classList.remove('is-open');
+                        var tr = c.querySelector('.custom-select-trigger');
+                        if (tr) tr.setAttribute('aria-expanded', 'false');
+                    }
+                });
+
+                container.classList.add('is-open');
+                trigger.setAttribute('aria-expanded', 'true');
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }
+
+            function closeMenu() {
+                container.classList.remove('is-open');
+                trigger.setAttribute('aria-expanded', 'false');
+            }
+
+            trigger.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (container.classList.contains('is-open')) {
+                    closeMenu();
+                } else {
+                    openMenu();
+                }
+            });
+
+            trigger.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === ' ' || e.key === 'Enter') {
+                    e.preventDefault();
+                    if (!container.classList.contains('is-open')) {
+                        openMenu();
+                    } else if (e.key === 'Enter' || e.key === ' ') {
+                        closeMenu();
+                    }
+                }
+            });
+
+            // Hide native select visually
+            select.classList.add('visually-hidden-select');
+            select.setAttribute('tabindex', '-1');
+
+            container.appendChild(trigger);
+            container.appendChild(menu);
+            wrap.appendChild(container);
+
+            select.addEventListener('change', function() {
+                var curOpt = select.options[select.selectedIndex];
+                if (curOpt) {
+                    labelSpan.textContent = curOpt.text;
+                }
+                updateSelectedClass();
+            });
+        });
+
+        // Close on click outside
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('.custom-select-container')) {
+                document.querySelectorAll('.custom-select-container.is-open').forEach(function(c) {
+                    c.classList.remove('is-open');
+                    var tr = c.querySelector('.custom-select-trigger');
+                    if (tr) tr.setAttribute('aria-expanded', 'false');
+                });
+            }
+        });
+
+        // Close on Escape
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.custom-select-container.is-open').forEach(function(c) {
+                    c.classList.remove('is-open');
+                    var tr = c.querySelector('.custom-select-trigger');
+                    if (tr) tr.setAttribute('aria-expanded', 'false');
+                });
+            }
+        });
+
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
     }
 })();
