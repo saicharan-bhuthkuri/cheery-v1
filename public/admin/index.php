@@ -5,6 +5,13 @@
  * Implements strict RBAC separating Super Admin governance from standard Admin operations.
  * Connects directly to actual SQL records with zero mocked or fabricated metrics.
  * Protects all state changes with CSRF tokens and records complete immutable audit trails.
+ *
+ * Redesigned to match the Club Membership Admin Dashboard layout & visual system:
+ * - Fixed left sidebar with navigation icons and labels + collapsible behavior
+ * - Clean top header with page title, subtitle, live connection status & quick actions
+ * - Horizontal compact summary stat cards (6 across) matching reference Image 2
+ * - Single unified toolbar above data tables (search, filters, action buttons)
+ * - Redesigned white container cards, clear headings, consistent typography, circular action buttons
  */
 
 require_once dirname(__DIR__) . '/config.php';
@@ -46,6 +53,8 @@ if (!in_array($activeTab, $allowedTabs, true)) {
 
 $actionSuccess = '';
 $actionError = $actionError ?? '';
+$period = '30d';
+$analyticsPayload = [];
 
 // 2. Handle State-Changing POST Actions
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
@@ -160,6 +169,7 @@ $metricApprovedProviders= (int)$pdo->query("SELECT COUNT(*) FROM `service_provid
 $metricTotalBookings    = (int)$pdo->query("SELECT COUNT(*) FROM `bookings`")->fetchColumn();
 $metricActiveBookings   = (int)$pdo->query("SELECT COUNT(*) FROM `bookings` WHERE `status` IN ('Confirmed', 'In Progress')")->fetchColumn();
 $metricCompletedBookings= (int)$pdo->query("SELECT COUNT(*) FROM `bookings` WHERE `status` = 'Completed'")->fetchColumn();
+$metricCancelledBookings= (int)$pdo->query("SELECT COUNT(*) FROM `bookings` WHERE `status` = 'Cancelled'")->fetchColumn();
 $metricTotalRevenue     = (float)$pdo->query("SELECT COALESCE(SUM(`estimated_price`), 0) FROM `bookings` WHERE `status` = 'Completed'")->fetchColumn();
 $metricTotalAdmins      = (int)$pdo->query("SELECT COUNT(*) FROM `admins` WHERE `is_active` = 1")->fetchColumn();
 
@@ -177,300 +187,1886 @@ $csrfToken = getCsrfToken();
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
     <link rel="stylesheet" href="../assets/css/variables.css">
-    <link rel="stylesheet" href="../assets/css/forms.css">
-    <link rel="stylesheet" href="../assets/css/admin-dashboard.css">
+    <link rel="stylesheet" href="../assets/css/admin-dashboard.css?v=<?= filemtime(__DIR__ . '/../assets/css/admin-dashboard.css'); ?>">
     <script src="../assets/js/lucide.min.js"></script>
+    <script src="../assets/js/chart.min.js"></script>
+    <script>
+        // Pre-apply sidebar state to prevent layout flash
+        if (localStorage.getItem('admin_sidebar_collapsed') === 'true' && window.innerWidth > 900) {
+            document.documentElement.classList.add('preload-sidebar-collapsed');
+        }
+    </script>
 </head>
 <body class="admin-body">
 
-    <!-- Top Administrative Navigation -->
-    <header class="admin-top-nav">
-        <a href="index.php" class="admin-nav-brand">
-            <div class="admin-brand-icon">
-                <i data-lucide="shield" style="width: 20px; height: 20px;"></i>
-            </div>
-            <h1 class="admin-brand-title">Kaam<span>Mitra</span></h1>
-            <span class="admin-console-pill">Admin Console</span>
-        </a>
+    <!-- Mobile Drawer Backdrop Overlay -->
+    <div id="adminSidebarBackdrop" class="admin-sidebar-backdrop" aria-hidden="true"></div>
 
-        <div class="admin-nav-right">
-            <!-- Role Badge -->
-            <?php if ($isSuperAdmin): ?>
-                <span class="admin-role-badge role-super-admin" title="Full Platform Governance Privileges">
-                    <i data-lucide="crown" style="width: 14px; height: 14px;"></i>
-                    <span>Super Administrator</span>
-                </span>
-            <?php else: ?>
-                <span class="admin-role-badge role-admin" title="Restricted Operational Privileges">
-                    <i data-lucide="shield-check" style="width: 14px; height: 14px;"></i>
-                    <span>Operational Admin</span>
-                </span>
-            <?php endif; ?>
+    <div class="admin-app" id="adminApp">
 
-            <!-- Admin Profile Display -->
-            <div class="admin-user-info">
-                <div class="admin-avatar-circle">
-                    <?= strtoupper(substr($currentAdmin['username'], 0, 1)); ?>
-                </div>
-                <span><?= htmlspecialchars($currentAdmin['full_name'] ?: $currentAdmin['username']); ?></span>
+        <!-- =============================================================
+             FIXED LEFT SIDEBAR (MATCHING REFERENCE IMAGE 2)
+             ============================================================= -->
+        <aside class="admin-fixed-sidebar" id="adminSidebar" aria-label="Platform Operations Navigation">
+            <!-- Sidebar Header with Brand & Collapse Button -->
+            <div class="sidebar-top-bar">
+                <a href="index.php" class="sidebar-brand-group" title="KaamMitra Admin Console">
+                    <div class="sidebar-brand-icon">
+                        <i data-lucide="shield" style="width: 17px; height: 17px;"></i>
+                    </div>
+                    <span class="sidebar-brand-text">Admin Console</span>
+                </a>
+                <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" aria-label="Toggle Sidebar" title="Collapse / Expand Sidebar">
+                    <i data-lucide="chevron-left" class="collapse-icon-left" style="width: 16px; height: 16px;"></i>
+                    <i data-lucide="chevron-right" class="collapse-icon-right" style="width: 16px; height: 16px; display: none;"></i>
+                </button>
             </div>
 
-            <!-- View Public Site -->
-            <a href="../index.php" target="_blank" class="btn-admin btn-admin-outline" style="border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.85);" title="Open Marketplace in new tab">
-                <i data-lucide="external-link" style="width: 14px; height: 14px;"></i>
-                <span>Marketplace</span>
-            </a>
-
-            <!-- Sign Out -->
-            <a href="logout.php" class="admin-signout-btn" title="Sign out securely">
-                <i data-lucide="log-out" style="width: 14px; height: 14px;"></i>
-                <span>Sign Out</span>
-            </a>
-        </div>
-    </header>
-
-    <!-- Main Console Container -->
-    <div class="admin-layout-wrapper">
-        
-        <!-- Sidebar Navigation -->
-        <aside class="admin-sidebar">
-            <div class="admin-nav-section-title">Core Operations</div>
-            <ul class="admin-sidebar-links">
-                <li>
-                    <a href="index.php?tab=overview" class="admin-sidebar-link <?= $activeTab === 'overview' ? 'active' : ''; ?>">
-                        <div class="link-left">
-                            <i data-lucide="layout-dashboard" style="width: 18px; height: 18px;"></i>
-                            <span>Overview</span>
+            <!-- Navigation Links Scroll Area -->
+            <nav class="sidebar-nav-scroll">
+                <div class="sidebar-nav-list">
+                    <!-- Tab 1: Overview -->
+                    <a href="index.php?tab=overview" class="sidebar-nav-item <?= $activeTab === 'overview' ? 'active' : ''; ?>" title="Executive Overview">
+                        <div class="nav-item-left">
+                            <i data-lucide="layout-dashboard" class="nav-item-icon"></i>
+                            <span class="nav-item-label">Overview</span>
                         </div>
                     </a>
-                </li>
-                <li>
-                    <a href="index.php?tab=providers" class="admin-sidebar-link <?= $activeTab === 'providers' ? 'active' : ''; ?>">
-                        <div class="link-left">
-                            <i data-lucide="users" style="width: 18px; height: 18px;"></i>
-                            <span>Service Mitras</span>
+
+                    <!-- Tab 2: Service Mitras -->
+                    <a href="index.php?tab=providers" class="sidebar-nav-item <?= $activeTab === 'providers' ? 'active' : ''; ?>" title="Service Provider (Mitra) Management">
+                        <div class="nav-item-left">
+                            <i data-lucide="users" class="nav-item-icon"></i>
+                            <span class="nav-item-label">Service Mitras</span>
                         </div>
                         <?php if ($metricPendingProviders > 0): ?>
-                            <span class="admin-nav-counter" title="Pending Verification Requests"><?= $metricPendingProviders; ?></span>
+                            <span class="nav-item-badge badge-amber" title="Pending Verification"><?= $metricPendingProviders; ?></span>
                         <?php endif; ?>
                     </a>
-                </li>
-                <li>
-                    <a href="index.php?tab=bookings" class="admin-sidebar-link <?= $activeTab === 'bookings' ? 'active' : ''; ?>">
-                        <div class="link-left">
-                            <i data-lucide="calendar-check" style="width: 18px; height: 18px;"></i>
-                            <span>Bookings</span>
+
+                    <!-- Tab 3: Bookings -->
+                    <a href="index.php?tab=bookings" class="sidebar-nav-item <?= $activeTab === 'bookings' ? 'active' : ''; ?>" title="Doorstep Bookings Pipeline">
+                        <div class="nav-item-left">
+                            <i data-lucide="calendar-check" class="nav-item-icon"></i>
+                            <span class="nav-item-label">Bookings</span>
                         </div>
                         <?php if ($metricActiveBookings > 0): ?>
-                            <span class="admin-nav-counter" style="background: #EFF6FF; color: #1E40AF; border-color: #BFDBFE;"><?= $metricActiveBookings; ?></span>
+                            <span class="nav-item-badge badge-blue" title="Active Orders"><?= $metricActiveBookings; ?></span>
                         <?php endif; ?>
                     </a>
-                </li>
-                <li>
-                    <a href="index.php?tab=customers" class="admin-sidebar-link <?= $activeTab === 'customers' ? 'active' : ''; ?>">
-                        <div class="link-left">
-                            <i data-lucide="user-check" style="width: 18px; height: 18px;"></i>
-                            <span>Customers</span>
+
+                    <!-- Tab 4: Customers -->
+                    <a href="index.php?tab=customers" class="sidebar-nav-item <?= $activeTab === 'customers' ? 'active' : ''; ?>" title="Customer Accounts Directory">
+                        <div class="nav-item-left">
+                            <i data-lucide="user-check" class="nav-item-icon"></i>
+                            <span class="nav-item-label">Customers</span>
                         </div>
                     </a>
-                </li>
-                <li>
-                    <a href="index.php?tab=reports" class="admin-sidebar-link <?= $activeTab === 'reports' ? 'active' : ''; ?>">
-                        <div class="link-left">
-                            <i data-lucide="bar-chart-3" style="width: 18px; height: 18px;"></i>
-                            <span>Operational Reports</span>
+
+                    <!-- Tab 5: Operational Reports -->
+                    <a href="index.php?tab=reports" class="sidebar-nav-item <?= $activeTab === 'reports' ? 'active' : ''; ?>" title="Operational Reports & Aggregates">
+                        <div class="nav-item-left">
+                            <i data-lucide="bar-chart-3" class="nav-item-icon"></i>
+                            <span class="nav-item-label">Operational Reports</span>
                         </div>
                     </a>
-                </li>
-            </ul>
 
-            <!-- Super Admin Governed Management Section -->
-            <?php if ($isSuperAdmin): ?>
-                <div class="admin-nav-section-title" style="margin-top: 0.5rem; color: #7C3AED;">Super Admin Controls</div>
-                <ul class="admin-sidebar-links">
-                    <li>
-                        <a href="index.php?tab=admins" class="admin-sidebar-link <?= $activeTab === 'admins' ? 'active' : ''; ?>">
-                            <div class="link-left">
-                                <i data-lucide="shield-alert" style="width: 18px; height: 18px; color: #7C3AED;"></i>
-                                <span>Administrators</span>
-                            </div>
-                            <span class="admin-nav-counter" style="background: #F5F3FF; color: #7C3AED; border-color: #DDD6FE;"><?= $metricTotalAdmins; ?></span>
-                        </a>
-                    </li>
-                    <li>
-                        <a href="index.php?tab=audit" class="admin-sidebar-link <?= $activeTab === 'audit' ? 'active' : ''; ?>">
-                            <div class="link-left">
-                                <i data-lucide="scroll-text" style="width: 18px; height: 18px; color: #7C3AED;"></i>
-                                <span>Security Audit Logs</span>
-                            </div>
-                        </a>
-                    </li>
-                </ul>
-            <?php endif; ?>
+                    <!-- Super Admin Controls (RBAC Enforced) -->
+                    <?php if ($isSuperAdmin): ?>
+                        <div class="sidebar-section-divider"></div>
+                        <div class="sidebar-section-title">Governance</div>
 
-            <div style="margin-top: auto; padding: 1rem 0.5rem; border-top: 1px solid var(--admin-border); font-size: 0.775rem; color: var(--admin-text-muted);">
-                <div style="display: flex; align-items: center; gap: 0.4rem; font-weight: 700; color: var(--admin-navy);">
-                    <i data-lucide="lock" style="width: 14px; height: 14px;"></i>
-                    <span>RBAC Enforced</span>
+                        <!-- Tab 6: Administrators -->
+                        <a href="index.php?tab=admins" class="sidebar-nav-item <?= $activeTab === 'admins' ? 'active' : ''; ?>" title="Administrator Accounts">
+                            <div class="nav-item-left">
+                                <i data-lucide="shield-alert" class="nav-item-icon" style="color: #7C3AED;"></i>
+                                <span class="nav-item-label">Administrators</span>
+                            </div>
+                            <span class="nav-item-badge badge-purple" title="Active Admins"><?= $metricTotalAdmins; ?></span>
+                        </a>
+
+                        <!-- Tab 7: Security Audit Logs -->
+                        <a href="index.php?tab=audit" class="sidebar-nav-item <?= $activeTab === 'audit' ? 'active' : ''; ?>" title="Platform Security Audit Log">
+                            <div class="nav-item-left">
+                                <i data-lucide="scroll-text" class="nav-item-icon" style="color: #7C3AED;"></i>
+                                <span class="nav-item-label">Security Audit Logs</span>
+                            </div>
+                        </a>
+                    <?php endif; ?>
                 </div>
-                <div style="margin-top: 0.25rem;">Server-side validated on every request.</div>
+            </nav>
+
+            <!-- Bottom User Profile Card (Matching Reference Image 2) -->
+            <div class="sidebar-bottom-wrap">
+                <div class="sidebar-user-card" title="Signed in as <?= htmlspecialchars($currentAdmin['username']); ?>">
+                    <div class="sidebar-user-info">
+                        <div class="sidebar-user-avatar">
+                            <?= strtoupper(substr($currentAdmin['username'], 0, 2)); ?>
+                        </div>
+                        <div class="sidebar-user-meta">
+                            <span class="sidebar-user-name"><?= htmlspecialchars($currentAdmin['full_name'] ?: $currentAdmin['username']); ?></span>
+                            <span class="sidebar-user-role"><?= $isSuperAdmin ? '&bull; SUPER ADMIN' : '&bull; OPERATIONAL ADMIN'; ?></span>
+                        </div>
+                    </div>
+                    <a href="logout.php" class="sidebar-logout-btn" title="Sign out securely">
+                        <i data-lucide="log-out" style="width: 16px; height: 16px;"></i>
+                    </a>
+                </div>
             </div>
         </aside>
 
-        <!-- Main Content Area -->
-        <main class="admin-content-area">
+        <!-- =============================================================
+             MAIN CONTENT VIEWPORT (MATCHING REFERENCE IMAGE 2)
+             ============================================================= -->
+        <main class="admin-main-content">
 
-            <!-- System Alerts -->
-            <?php if (!empty($actionSuccess)): ?>
-                <div class="alert-box alert-success" style="margin-bottom: 1.5rem; background: #ECFDF5; border: 1px solid #A7F3D0; color: #065F46; padding: 0.85rem 1.25rem; border-radius: 12px; display: flex; align-items: center; gap: 0.65rem;">
-                    <i data-lucide="check-circle" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
-                    <span style="font-weight: 600;"><?= htmlspecialchars($actionSuccess); ?></span>
-                </div>
-            <?php endif; ?>
+            <!-- Clean Top Header Bar (Matching Image 2 Reference with Executive Polish) -->
+            <header class="admin-top-header">
+                <div class="header-left">
+                    <!-- Sidebar Toggle Button (Matches Image 2) -->
+                    <button type="button" id="adminHeaderToggleBtn" class="header-menu-btn" title="Toggle Sidebar Navigation" aria-label="Toggle Sidebar Navigation">
+                        <i data-lucide="menu" style="width: 18px; height: 18px;"></i>
+                    </button>
 
-            <?php if (!empty($actionError)): ?>
-                <div class="alert-box alert-error" style="margin-bottom: 1.5rem; background: #FEF2F2; border: 1px solid #FECACA; color: #991B1B; padding: 0.85rem 1.25rem; border-radius: 12px; display: flex; align-items: center; gap: 0.65rem;">
-                    <i data-lucide="alert-triangle" style="width: 20px; height: 20px; flex-shrink: 0;"></i>
-                    <span style="font-weight: 600;"><?= htmlspecialchars($actionError); ?></span>
-                </div>
-            <?php endif; ?>
-
-            <!-- =============================================================
-                 TAB 1: OVERVIEW DASHBOARD
-                 ============================================================= -->
-            <?php if ($activeTab === 'overview'): ?>
-                <div class="admin-page-header">
-                    <div>
-                        <h2 class="admin-page-title">Executive Overview</h2>
-                        <p class="admin-page-desc">Real-time platform metrics, technician verification queues, and booking pipeline.</p>
-                    </div>
-                    <div>
-                        <span style="font-size: 0.825rem; color: var(--admin-text-muted); font-weight: 600;">
-                            Live SQL sync &bull; <?= date('d M Y, h:i A'); ?>
-                        </span>
-                    </div>
-                </div>
-
-                <!-- Metrics Grid -->
-                <div class="admin-metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-icon-wrap metric-icon-amber">
-                            <i data-lucide="clock" style="width: 24px; height: 24px;"></i>
-                        </div>
-                        <div class="metric-data">
-                            <span class="metric-value"><?= number_format($metricPendingProviders); ?></span>
-                            <span class="metric-label">Pending Verifications</span>
-                        </div>
-                    </div>
-
-                    <div class="metric-card">
-                        <div class="metric-icon-wrap metric-icon-green">
-                            <i data-lucide="user-check" style="width: 24px; height: 24px;"></i>
-                        </div>
-                        <div class="metric-data">
-                            <span class="metric-value"><?= number_format($metricApprovedProviders); ?></span>
-                            <span class="metric-label">Approved Providers</span>
-                        </div>
-                    </div>
-
-                    <div class="metric-card">
-                        <div class="metric-icon-wrap metric-icon-blue">
-                            <i data-lucide="calendar" style="width: 24px; height: 24px;"></i>
-                        </div>
-                        <div class="metric-data">
-                            <span class="metric-value"><?= number_format($metricActiveBookings); ?></span>
-                            <span class="metric-label">Active Bookings</span>
-                        </div>
-                    </div>
-
-                    <div class="metric-card">
-                        <div class="metric-icon-wrap metric-icon-coral">
-                            <i data-lucide="users" style="width: 24px; height: 24px;"></i>
-                        </div>
-                        <div class="metric-data">
-                            <span class="metric-value"><?= number_format($metricTotalCustomers); ?></span>
-                            <span class="metric-label">Registered Customers</span>
-                        </div>
-                    </div>
-
-                    <div class="metric-card">
-                        <div class="metric-icon-wrap metric-icon-purple">
-                            <i data-lucide="wallet" style="width: 24px; height: 24px;"></i>
-                        </div>
-                        <div class="metric-data">
-                            <span class="metric-value">₹<?= number_format($metricTotalRevenue, 2); ?></span>
-                            <span class="metric-label">Delivered Revenue</span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Priority Section: Pending Verification Queue -->
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <h3 class="admin-card-title">
-                            <i data-lucide="shield-alert" style="width: 18px; height: 18px; color: var(--admin-amber);"></i>
-                            <span>Priority Verification Queue (Pending Review)</span>
-                        </h3>
-                        <a href="index.php?tab=providers&status=Pending" class="btn-admin btn-admin-outline">View All Pending</a>
-                    </div>
-                    <div class="admin-card-body" style="padding: 0;">
-                        <?php
-                        $pendingStmt = $pdo->prepare("SELECT * FROM `service_providers` WHERE `verification_status` = 'Pending' ORDER BY `created_at` DESC LIMIT 5");
-                        $pendingStmt->execute();
-                        $pendingList = $pendingStmt->fetchAll();
-                        ?>
-                        <?php if (empty($pendingList)): ?>
-                            <div style="padding: 2.5rem; text-align: center; color: var(--admin-text-muted);">
-                                <i data-lucide="check-circle-2" style="width: 36px; height: 36px; color: var(--admin-green); margin-bottom: 0.5rem;"></i>
-                                <p style="margin: 0; font-weight: 700;">All provider applications have been reviewed!</p>
-                                <span style="font-size: 0.85rem;">No technicians currently awaiting administrative clearance.</span>
+                    <div class="header-title-box">
+                        <div class="header-title-row">
+                            <h1 class="header-page-title">
+                                <?php
+                                echo match($activeTab) {
+                                    'overview'  => 'Executive Overview',
+                                    'providers' => 'Service Provider (Mitra) Management',
+                                    'bookings'  => 'Doorstep Bookings &amp; Service Pipeline',
+                                    'customers' => 'Customer Accounts Directory',
+                                    'reports'   => 'Operational Reports &amp; Aggregates',
+                                    'admins'    => 'Administrator Account Governance',
+                                    'audit'     => 'Platform Security Audit Log',
+                                    default     => 'Admin Console'
+                                };
+                                ?>
+                            </h1>
+                            <div class="header-tab-badge">
+                                <?php
+                                echo match($activeTab) {
+                                    'overview'  => '<span class="header-pill pill-orange"><span class="pulse-dot-sm"></span> EXECUTIVE GOVERNANCE</span>',
+                                    'providers' => '<span class="header-pill pill-blue"><i data-lucide="user-check" style="width: 12px; height: 12px;"></i> TECHNICIAN VERIFICATION</span>',
+                                    'bookings'  => '<span class="header-pill pill-amber"><i data-lucide="calendar" style="width: 12px; height: 12px;"></i> DOORSTEP SERVICE PIPELINE</span>',
+                                    'customers' => '<span class="header-pill pill-purple"><i data-lucide="users" style="width: 12px; height: 12px;"></i> CONSUMER DIRECTORY</span>',
+                                    'reports'   => '<span class="header-pill pill-emerald"><i data-lucide="bar-chart-2" style="width: 12px; height: 12px;"></i> OPERATIONAL REPORTS</span>',
+                                    'admins'    => '<span class="header-pill pill-purple"><i data-lucide="shield" style="width: 12px; height: 12px;"></i> SYSTEM ACCESS GOVERNANCE</span>',
+                                    'audit'     => '<span class="header-pill pill-slate"><i data-lucide="file-text" style="width: 12px; height: 12px;"></i> SECURITY AUDIT TRAIL</span>',
+                                    default     => '<span class="header-pill pill-orange"><span class="pulse-dot-sm"></span> PLATFORM CONSOLE</span>'
+                                };
+                                ?>
                             </div>
-                        <?php else: ?>
+                        </div>
+
+                        <p class="header-page-subtitle">
+                            <span>
+                            <?php
+                            echo match($activeTab) {
+                                'overview'  => 'Role-Based System Access Control Active',
+                                'providers' => 'Review verification requests, manage approved technicians, and update credential status.',
+                                'bookings'  => 'Track real-time orders, manage dispatch statuses, and oversee fulfillment.',
+                                'customers' => 'Search registered homeowner profiles, view verification terms, and manage access.',
+                                'reports'   => 'Comprehensive database performance figures, category distribution, and geographic coverage.',
+                                'admins'    => 'Create administrative accounts, assign roles, activate/deactivate personnel, and execute password resets.',
+                                'audit'     => 'Tamper-evident chronological audit trail of all sign-ins, approvals, and governance decisions.',
+                                default     => 'Administrative Session Active'
+                            };
+                            ?>
+                            </span>
+                            <span class="header-meta-sep">•</span>
+                            <span class="header-live-time" title="Live Server Time">
+                                <i data-lucide="clock" style="width: 12px; height: 12px; color: #8B5CF6;"></i>
+                                <span id="headerLiveClockTime"><?= date('h:i A'); ?></span>
+                            </span>
+                        </p>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <!-- Live Connection Status Pill (Matches Image 2) -->
+                    <div class="live-connection-badge" title="Persistent Real-time Database Socket Connected">
+                        <span class="pulse-dot"></span>
+                        <span class="live-status-label">Live Connection</span>
+                        <span class="live-status-latency">SQL Active</span>
+                    </div>
+
+                    <!-- Marketplace Link -->
+                    <a href="../index.php" target="_blank" class="header-action-btn header-btn-marketplace" title="Open Public Website">
+                        <i data-lucide="store" style="width: 13px; height: 13px;"></i>
+                        <span>Marketplace</span>
+                        <i data-lucide="external-link" style="width: 11px; height: 11px; opacity: 0.6;"></i>
+                    </a>
+
+                    <!-- Refresh Action with Live Feedback -->
+                    <button type="button" class="header-action-btn header-btn-refresh" id="headerRefreshActionBtn" onclick="triggerHeaderRefresh(this);" title="Refresh Platform State">
+                        <i data-lucide="refresh-cw" class="header-refresh-icon" style="width: 13px; height: 13px;"></i>
+                        <span>Refresh</span>
+                    </button>
+
+                    <div class="header-actions-divider"></div>
+
+                    <!-- Admin Quick Profile Chip -->
+                    <?php
+                    $adminRawName = $currentAdmin['full_name'] ?: $currentAdmin['username'];
+                    $adminCleanName = trim(preg_replace('/\s*\(.*?\)/', '', $adminRawName)) ?: $currentAdmin['username'];
+                    ?>
+                    <div class="header-profile-chip" title="<?= htmlspecialchars($currentAdmin['username']); ?> (<?= $isSuperAdmin ? 'Super Administrator' : 'Administrator'; ?>)">
+                        <div class="header-avatar-circle">
+                            <?= strtoupper(substr($currentAdmin['username'], 0, 2)); ?>
+                        </div>
+                        <div class="header-profile-text">
+                            <span class="header-profile-name"><?= htmlspecialchars($adminCleanName); ?></span>
+                            <span class="header-profile-role"><?= $isSuperAdmin ? 'SUPER ADMIN' : 'ADMIN'; ?></span>
+                        </div>
+                        <a href="logout.php" class="header-logout-quick" title="Sign out securely">
+                            <i data-lucide="log-out" style="width: 13px; height: 13px;"></i>
+                        </a>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Main Content Container -->
+            <div class="admin-content-body">
+
+                <!-- System Notifications -->
+                <?php if (!empty($actionSuccess)): ?>
+                    <div class="admin-card" style="margin-bottom: 1.25rem; border-color: #A7F3D0; background: #ECFDF5; padding: 0.85rem 1.25rem; display: flex; align-items: center; gap: 0.65rem;">
+                        <i data-lucide="check-circle" style="width: 18px; height: 18px; color: #059669; flex-shrink: 0;"></i>
+                        <span style="font-weight: 700; color: #065F46; font-size: 0.85rem;"><?= htmlspecialchars($actionSuccess); ?></span>
+                    </div>
+                <?php endif; ?>
+
+                <?php if (!empty($actionError)): ?>
+                    <div class="admin-card" style="margin-bottom: 1.25rem; border-color: #FECACA; background: #FEF2F2; padding: 0.85rem 1.25rem; display: flex; align-items: center; gap: 0.65rem;">
+                        <i data-lucide="alert-triangle" style="width: 18px; height: 18px; color: #DC2626; flex-shrink: 0;"></i>
+                        <span style="font-weight: 700; color: #991B1B; font-size: 0.85rem;"><?= htmlspecialchars($actionError); ?></span>
+                    </div>
+                <?php endif; ?>
+
+                <!-- =============================================================
+                     TAB 1: OVERVIEW DASHBOARD
+                     ============================================================= -->
+                <?php if ($activeTab === 'overview'): ?>
+                    <?php
+                    // Resolve active analytics period
+                    $period = trim($_GET['period'] ?? '30d');
+                    if (!in_array($period, ['7d', '30d', '90d', 'all'], true)) {
+                        $period = '30d';
+                    }
+
+                    // Compute all-time totals for reference in progress indicators
+                    $totalProvidersAllTime   = (int)$pdo->query("SELECT COUNT(*) FROM `service_providers`")->fetchColumn();
+                    $approvedProvidersAllTime= (int)$pdo->query("SELECT COUNT(*) FROM `service_providers` WHERE `verification_status` = 'Approved'")->fetchColumn();
+                    $totalCustomersAllTime   = (int)$pdo->query("SELECT COUNT(*) FROM `customers`")->fetchColumn();
+                    $verifiedCustomersAllTime= (int)$pdo->query("SELECT COUNT(*) FROM `customers` WHERE `terms_accepted` = 1")->fetchColumn();
+
+                    // Pre-aggregate real analytics data for all 4 periods to enable instant dynamic client switching + server rendering
+                    $analyticsPayload = [];
+                    $periodLabelsMap = [
+                        '7d'  => 'Last 7 Days',
+                        '30d' => 'Last 30 Days',
+                        '90d' => 'Last 90 Days',
+                        'all' => 'All Time'
+                    ];
+
+                    $periodRangeDesc = [
+                        '7d'  => date('d M Y', strtotime('-7 days')) . ' - ' . date('d M Y'),
+                        '30d' => date('d M Y', strtotime('-30 days')) . ' - ' . date('d M Y'),
+                        '90d' => date('d M Y', strtotime('-90 days')) . ' - ' . date('d M Y'),
+                        'all' => 'Platform Launch - Present'
+                    ];
+
+                    foreach (['7d', '30d', '90d', 'all'] as $pKey) {
+                        $whereB = "";
+                        $whereC = "";
+                        $whereP = "";
+
+                        if ($pKey === '7d') {
+                            $whereB = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+                            $whereC = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+                            $whereP = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+                        } elseif ($pKey === '30d') {
+                            $whereB = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+                            $whereC = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+                            $whereP = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 30 DAY)";
+                        } elseif ($pKey === '90d') {
+                            $whereB = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 90 DAY)";
+                            $whereC = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 90 DAY)";
+                            $whereP = "WHERE `created_at` >= DATE_SUB(NOW(), INTERVAL 90 DAY)";
+                        }
+
+                        $bPrefix = $whereB ? "{$whereB} AND " : "WHERE ";
+                        $pPrefix = $whereP ? "{$whereP} AND " : "WHERE ";
+
+                        // KPIs
+                        $totBookings = (int)$pdo->query("SELECT COUNT(*) FROM `bookings` {$whereB}")->fetchColumn();
+                        $activeBookings = (int)$pdo->query("SELECT COUNT(*) FROM `bookings` {$bPrefix} `status` IN ('Confirmed', 'In Progress')")->fetchColumn();
+                        $completedBookings = (int)$pdo->query("SELECT COUNT(*) FROM `bookings` {$bPrefix} `status` = 'Completed'")->fetchColumn();
+                        $cancelledBookings = (int)$pdo->query("SELECT COUNT(*) FROM `bookings` {$bPrefix} `status` = 'Cancelled'")->fetchColumn();
+                        $revenue = (float)$pdo->query("SELECT COALESCE(SUM(`estimated_price`), 0) FROM `bookings` {$bPrefix} `status` = 'Completed'")->fetchColumn();
+
+                        $regCustomers = (int)$pdo->query("SELECT COUNT(*) FROM `customers` {$whereC}")->fetchColumn();
+                        $verifiedProviders = (int)$pdo->query("SELECT COUNT(*) FROM `service_providers` {$pPrefix} `verification_status` = 'Approved'")->fetchColumn();
+
+                        // Progress Rates
+                        $validBookings = $totBookings - $cancelledBookings;
+                        $completionRate = $totBookings > 0 ? round(($completedBookings / $totBookings) * 100, 1) : 0.0;
+                        $fulfillmentRate = $validBookings > 0 ? round(($completedBookings / $validBookings) * 100, 1) : 0.0;
+                        $provVerifRate = $totalProvidersAllTime > 0 ? round(($approvedProvidersAllTime / $totalProvidersAllTime) * 100, 1) : 0.0;
+                        $custVerifRate = $totalCustomersAllTime > 0 ? round(($verifiedCustomersAllTime / $totalCustomersAllTime) * 100, 1) : 0.0;
+
+                        // Timeline (Bookings, Completed, Cancelled, Revenue, Customer Signups)
+                        $dailyStmt = $pdo->query("
+                            SELECT 
+                                DATE(`created_at`) as d_date,
+                                COUNT(*) as total_bookings,
+                                SUM(CASE WHEN `status` = 'Completed' THEN 1 ELSE 0 END) as completed_count,
+                                SUM(CASE WHEN `status` = 'Cancelled' THEN 1 ELSE 0 END) as cancelled_count,
+                                COALESCE(SUM(CASE WHEN `status` = 'Completed' THEN `estimated_price` ELSE 0 END), 0) as revenue
+                            FROM `bookings`
+                            {$whereB}
+                            GROUP BY DATE(`created_at`)
+                            ORDER BY d_date ASC
+                        ");
+                        $timelineRows = $dailyStmt ? $dailyStmt->fetchAll() : [];
+
+                        $custStmt = $pdo->query("
+                            SELECT DATE(`created_at`) as d_date, COUNT(*) as cust_count
+                            FROM `customers`
+                            {$whereC}
+                            GROUP BY DATE(`created_at`)
+                            ORDER BY d_date ASC
+                        ");
+                        $custMap = $custStmt ? $custStmt->fetchAll(PDO::FETCH_KEY_PAIR) : [];
+
+                        $tLabels = [];
+                        $tBookings = [];
+                        $tCompleted = [];
+                        $tCancelled = [];
+                        $tRevenue = [];
+                        $tCustomers = [];
+
+                        foreach ($timelineRows as $tr) {
+                            $d = $tr['d_date'];
+                            $tLabels[] = date('d M', strtotime($d));
+                            $tBookings[] = (int)$tr['total_bookings'];
+                            $tCompleted[] = (int)$tr['completed_count'];
+                            $tCancelled[] = (int)$tr['cancelled_count'];
+                            $tRevenue[] = round((float)$tr['revenue'], 2);
+                            $tCustomers[] = (int)($custMap[$d] ?? 0);
+                        }
+
+                        // Booking Status Distribution
+                        $statusStmt = $pdo->query("SELECT `status`, COUNT(*) as cnt FROM `bookings` {$whereB} GROUP BY `status`");
+                        $statusMap = $statusStmt ? $statusStmt->fetchAll(PDO::FETCH_KEY_PAIR) : [];
+                        $statusLabels = ['Completed', 'In Progress', 'Confirmed', 'Cancelled'];
+                        $statusCounts = [
+                            (int)($statusMap['Completed'] ?? 0),
+                            (int)($statusMap['In Progress'] ?? 0),
+                            (int)($statusMap['Confirmed'] ?? 0),
+                            (int)($statusMap['Cancelled'] ?? 0)
+                        ];
+
+                        // Customer City Distribution
+                        $cityStmt = $pdo->query("
+                            SELECT COALESCE(NULLIF(TRIM(`city`), ''), 'Unassigned') as cname, COUNT(*) as cnt 
+                            FROM `customers` 
+                            {$whereC} 
+                            GROUP BY cname 
+                            ORDER BY cnt DESC
+                        ");
+                        $cityRows = $cityStmt ? $cityStmt->fetchAll() : [];
+                        $cityLabels = [];
+                        $cityCounts = [];
+                        foreach ($cityRows as $cr) {
+                            $cityLabels[] = $cr['cname'];
+                            $cityCounts[] = (int)$cr['cnt'];
+                        }
+
+                        // Service Categories Breakdown
+                        $catStmt = $pdo->query("
+                            SELECT 
+                                `service_category`, 
+                                COUNT(*) as cnt, 
+                                SUM(CASE WHEN `status` = 'Completed' THEN 1 ELSE 0 END) as comp_cnt,
+                                COALESCE(SUM(CASE WHEN `status` = 'Completed' THEN `estimated_price` ELSE 0 END), 0) as rev
+                            FROM `bookings`
+                            {$whereB}
+                            GROUP BY `service_category`
+                            ORDER BY cnt DESC
+                        ");
+                        $catRows = $catStmt ? $catStmt->fetchAll() : [];
+                        $catLabels = [];
+                        $catCounts = [];
+                        $catComp = [];
+                        $catRev = [];
+                        foreach ($catRows as $cr) {
+                            $catLabels[] = $cr['service_category'];
+                            $catCounts[] = (int)$cr['cnt'];
+                            $catComp[] = (int)$cr['comp_cnt'];
+                            $catRev[] = round((float)$cr['rev'], 2);
+                        }
+
+                        // Stacked Category Status Matrix
+                        $stackStmt = $pdo->query("
+                            SELECT 
+                                `service_category`,
+                                SUM(CASE WHEN `status` = 'Confirmed' THEN 1 ELSE 0 END) as s_conf,
+                                SUM(CASE WHEN `status` = 'In Progress' THEN 1 ELSE 0 END) as s_prog,
+                                SUM(CASE WHEN `status` = 'Completed' THEN 1 ELSE 0 END) as s_comp,
+                                SUM(CASE WHEN `status` = 'Cancelled' THEN 1 ELSE 0 END) as s_canc
+                            FROM `bookings`
+                            {$whereB}
+                            GROUP BY `service_category`
+                            ORDER BY COUNT(*) DESC
+                        ");
+                        $stackRows = $stackStmt ? $stackStmt->fetchAll() : [];
+                        $stackCats = [];
+                        $stackConf = [];
+                        $stackProg = [];
+                        $stackComp = [];
+                        $stackCanc = [];
+                        foreach ($stackRows as $sr) {
+                            $stackCats[] = $sr['service_category'];
+                            $stackConf[] = (int)$sr['s_conf'];
+                            $stackProg[] = (int)$sr['s_prog'];
+                            $stackComp[] = (int)$sr['s_comp'];
+                            $stackCanc[] = (int)$sr['s_canc'];
+                        }
+
+                        // Most Popular Services
+                        $popStmt = $pdo->query("
+                            SELECT `sub_service`, `service_category`, COUNT(*) as cnt, COALESCE(SUM(`estimated_price`), 0) as rev
+                            FROM `bookings`
+                            {$whereB}
+                            GROUP BY `sub_service`, `service_category`
+                            ORDER BY cnt DESC, rev DESC
+                            LIMIT 6
+                        ");
+                        $popRows = $popStmt ? $popStmt->fetchAll() : [];
+                        $popLabels = [];
+                        $popCounts = [];
+                        $popRevs = [];
+                        foreach ($popRows as $pr) {
+                            $popLabels[] = $pr['sub_service'];
+                            $popCounts[] = (int)$pr['cnt'];
+                            $popRevs[] = round((float)$pr['rev'], 2);
+                        }
+
+                        // Top-performing Service Providers (Mitras)
+                        $mitraStmt = $pdo->query("
+                            SELECT `mitra_name`, COUNT(*) as jobs, SUM(CASE WHEN `status` = 'Completed' THEN 1 ELSE 0 END) as comp, COALESCE(AVG(`mitra_rating`), 5.0) as rating, COALESCE(SUM(CASE WHEN `status` = 'Completed' THEN `estimated_price` ELSE 0 END), 0) as earn
+                            FROM `bookings`
+                            {$bPrefix} TRIM(`mitra_name`) != ''
+                            GROUP BY `mitra_name`
+                            ORDER BY comp DESC, rating DESC
+                            LIMIT 5
+                        ");
+                        $mitraRows = $mitraStmt ? $mitraStmt->fetchAll() : [];
+                        $mitraLabels = [];
+                        $mitraJobs = [];
+                        $mitraRatings = [];
+                        $mitraEarn = [];
+                        $mitraDetails = [];
+                        foreach ($mitraRows as $mr) {
+                            $mName = $mr['mitra_name'];
+                            $mComp = (int)$mr['comp'];
+                            $mRating = round((float)$mr['rating'], 1);
+                            $mEarn = round((float)$mr['earn'], 2);
+                            $mitraLabels[] = $mName;
+                            $mitraJobs[] = $mComp;
+                            $mitraRatings[] = $mRating;
+                            $mitraEarn[] = $mEarn;
+
+                            $words = preg_split('/\s+/', trim($mName));
+                            $initials = '';
+                            foreach ($words as $w) {
+                                if (!empty($w)) $initials .= strtoupper(substr($w, 0, 1));
+                            }
+                            $initials = substr($initials, 0, 2);
+
+                            $mitraDetails[] = [
+                                'name' => $mName,
+                                'initials' => $initials ?: 'KM',
+                                'comp' => $mComp,
+                                'rating' => $mRating,
+                                'earn' => $mEarn
+                            ];
+                        }
+
+                        $analyticsPayload[$pKey] = [
+                            'label' => $periodLabelsMap[$pKey],
+                            'range' => $periodRangeDesc[$pKey],
+                            'kpis' => [
+                                'totalBookings' => $totBookings,
+                                'activeBookings' => $activeBookings,
+                                'completedBookings' => $completedBookings,
+                                'cancelledBookings' => $cancelledBookings,
+                                'platformRevenue' => $revenue,
+                                'registeredCustomers' => $regCustomers,
+                                'verifiedProviders' => $verifiedProviders
+                            ],
+                            'progress' => [
+                                'provVerifRate' => $provVerifRate,
+                                'provApproved' => $approvedProvidersAllTime,
+                                'provTotal' => $totalProvidersAllTime,
+                                'completionRate' => $completionRate,
+                                'fulfillmentRate' => $fulfillmentRate,
+                                'custVerifRate' => $custVerifRate,
+                                'custVerified' => $verifiedCustomersAllTime,
+                                'custTotal' => $totalCustomersAllTime,
+                                'completedBookings' => $completedBookings,
+                                'totalBookings' => $totBookings,
+                                'cancelledBookings' => $cancelledBookings
+                            ],
+                            'timeline' => [
+                                'labels' => $tLabels,
+                                'bookings' => $tBookings,
+                                'completed' => $tCompleted,
+                                'cancelled' => $tCancelled,
+                                'revenue' => $tRevenue,
+                                'customers' => $tCustomers
+                            ],
+                            'bookingStatus' => [
+                                'labels' => $statusLabels,
+                                'counts' => $statusCounts
+                            ],
+                            'customerCities' => [
+                                'labels' => $cityLabels,
+                                'counts' => $cityCounts
+                            ],
+                            'serviceCategories' => [
+                                'labels' => $catLabels,
+                                'counts' => $catCounts,
+                                'completed' => $catComp,
+                                'revenue' => $catRev
+                            ],
+                            'stackedStatus' => [
+                                'categories' => $stackCats,
+                                'confirmed' => $stackConf,
+                                'inProgress' => $stackProg,
+                                'completed' => $stackComp,
+                                'cancelled' => $stackCanc
+                            ],
+                            'popularServices' => [
+                                'labels' => $popLabels,
+                                'counts' => $popCounts,
+                                'revenues' => $popRevs
+                            ],
+                            'topMitras' => [
+                                'labels' => $mitraLabels,
+                                'completed' => $mitraJobs,
+                                'ratings' => $mitraRatings,
+                                'earnings' => $mitraEarn,
+                                'details' => $mitraDetails
+                            ]
+                        ];
+                    }
+
+                    // Active period current data for server-rendered HTML
+                    $activeData = $analyticsPayload[$period];
+                    $curKpis = $activeData['kpis'];
+                    $curProg = $activeData['progress'];
+                    ?>
+
+                    <!-- =============================================================
+                         ANALYTICS DATE RANGE CONTROL BAR
+                         ============================================================= -->
+                    <div class="analytics-filter-toolbar">
+                        <div class="analytics-filter-title">
+                            <i data-lucide="bar-chart-3" style="width: 18px; height: 18px; color: var(--brand-primary);"></i>
+                            <span>Platform Performance Analytics</span>
+                            <span class="analytics-filter-range" id="overviewRangeDesc">(<?= htmlspecialchars($activeData['range']); ?>)</span>
+                        </div>
+                        <div class="analytics-period-pills">
+                            <a href="index.php?tab=overview&period=7d" onclick="switchAnalyticsPeriod('7d', event)" class="analytics-pill-btn <?= $period === '7d' ? 'active' : ''; ?>" data-period="7d">
+                                <i data-lucide="calendar" style="width: 13px; height: 13px;"></i>
+                                <span>7 Days</span>
+                            </a>
+                            <a href="index.php?tab=overview&period=30d" onclick="switchAnalyticsPeriod('30d', event)" class="analytics-pill-btn <?= $period === '30d' ? 'active' : ''; ?>" data-period="30d">
+                                <i data-lucide="calendar" style="width: 13px; height: 13px;"></i>
+                                <span>30 Days</span>
+                            </a>
+                            <a href="index.php?tab=overview&period=90d" onclick="switchAnalyticsPeriod('90d', event)" class="analytics-pill-btn <?= $period === '90d' ? 'active' : ''; ?>" data-period="90d">
+                                <i data-lucide="calendar" style="width: 13px; height: 13px;"></i>
+                                <span>90 Days</span>
+                            </a>
+                            <a href="index.php?tab=overview&period=all" onclick="switchAnalyticsPeriod('all', event)" class="analytics-pill-btn <?= $period === 'all' ? 'active' : ''; ?>" data-period="all">
+                                <i data-lucide="history" style="width: 13px; height: 13px;"></i>
+                                <span>All Time</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- =============================================================
+                         7 COMPREHENSIVE KPI CARDS (MATCHING USER REQUIREMENTS)
+                         ============================================================= -->
+                    <div class="admin-summary-grid admin-summary-7col">
+                        <!-- KPI 1: Total Bookings -->
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Total Bookings</span>
+                                <div class="summary-card-icon icon-blue">
+                                    <i data-lucide="calendar" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val" id="kpiTotalBookings"><?= number_format($curKpis['totalBookings']); ?></div>
+                        </div>
+
+                        <!-- KPI 2: Active Bookings -->
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Active Orders</span>
+                                <div class="summary-card-icon icon-teal">
+                                    <i data-lucide="activity" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val" id="kpiActiveBookings"><?= number_format($curKpis['activeBookings']); ?></div>
+                        </div>
+
+                        <!-- KPI 3: Platform Revenue -->
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Platform Revenue</span>
+                                <div class="summary-card-icon icon-orange">
+                                    <i data-lucide="wallet" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val" id="kpiPlatformRevenue">₹<?= number_format($curKpis['platformRevenue'], 2); ?></div>
+                        </div>
+
+                        <!-- KPI 4: Completed Services -->
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Completed Services</span>
+                                <div class="summary-card-icon icon-green">
+                                    <i data-lucide="check-circle-2" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val" id="kpiCompletedServices"><?= number_format($curKpis['completedBookings']); ?></div>
+                        </div>
+
+                        <!-- KPI 5: Cancellations -->
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Cancellations</span>
+                                <div class="summary-card-icon icon-red">
+                                    <i data-lucide="x-circle" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val" id="kpiCancellations"><?= number_format($curKpis['cancelledBookings']); ?></div>
+                        </div>
+
+                        <!-- KPI 6: Registered Customers -->
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Customers</span>
+                                <div class="summary-card-icon icon-purple">
+                                    <i data-lucide="users" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val" id="kpiRegisteredCustomers"><?= number_format($curKpis['registeredCustomers']); ?></div>
+                        </div>
+
+                        <!-- KPI 7: Verified Providers -->
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Verified Mitras</span>
+                                <div class="summary-card-icon icon-amber">
+                                    <i data-lucide="shield-check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val" id="kpiVerifiedProviders"><?= number_format($curKpis['verifiedProviders']); ?></div>
+                        </div>
+                    </div>
+
+                    <!-- =============================================================
+                         PROGRESS INDICATORS (VERIFICATION, COMPLETION, FULFILLMENT)
+                         ============================================================= -->
+                    <div class="admin-progress-grid">
+                        <!-- Progress 1: Provider Verification Progress -->
+                        <div class="admin-progress-card">
+                            <div class="progress-card-head">
+                                <span class="progress-card-title">
+                                    <i data-lucide="shield-check" style="width: 15px; height: 15px; color: #10B981;"></i>
+                                    <span>Provider Verification</span>
+                                </span>
+                                <span class="progress-card-pct" id="progProvPct" style="color: #10B981;"><?= $curProg['provVerifRate']; ?>%</span>
+                            </div>
+                            <div class="progress-bar-track">
+                                <div class="progress-bar-fill" id="progProvFill" style="width: <?= $curProg['provVerifRate']; ?>%; background: #10B981;"></div>
+                            </div>
+                            <div class="progress-card-sub" id="progProvSub">
+                                <?= $curProg['provApproved']; ?> of <?= $curProg['provTotal']; ?> service professionals approved for doorstep dispatch.
+                            </div>
+                        </div>
+
+                        <!-- Progress 2: Booking Completion Rate -->
+                        <div class="admin-progress-card">
+                            <div class="progress-card-head">
+                                <span class="progress-card-title">
+                                    <i data-lucide="check-circle" style="width: 15px; height: 15px; color: var(--brand-primary);"></i>
+                                    <span>Booking Completion</span>
+                                </span>
+                                <span class="progress-card-pct" id="progCompPct" style="color: var(--brand-primary);"><?= $curProg['completionRate']; ?>%</span>
+                            </div>
+                            <div class="progress-bar-track">
+                                <div class="progress-bar-fill" id="progCompFill" style="width: <?= $curProg['completionRate']; ?>%; background: var(--brand-primary);"></div>
+                            </div>
+                            <div class="progress-card-sub" id="progCompSub">
+                                <?= $curProg['completedBookings']; ?> of <?= $curProg['totalBookings']; ?> total period orders successfully delivered.
+                            </div>
+                        </div>
+
+                        <!-- Progress 3: Service Fulfillment Rate -->
+                        <div class="admin-progress-card">
+                            <div class="progress-card-head">
+                                <span class="progress-card-title">
+                                    <i data-lucide="trending-up" style="width: 15px; height: 15px; color: #2563EB;"></i>
+                                    <span>Service Fulfillment</span>
+                                </span>
+                                <span class="progress-card-pct" id="progFulfillPct" style="color: #2563EB;"><?= $curProg['fulfillmentRate']; ?>%</span>
+                            </div>
+                            <div class="progress-bar-track">
+                                <div class="progress-bar-fill" id="progFulfillFill" style="width: <?= $curProg['fulfillmentRate']; ?>%; background: #2563EB;"></div>
+                            </div>
+                            <div class="progress-card-sub" id="progFulfillSub">
+                                Successful fulfillment of all non-cancelled customer requests.
+                            </div>
+                        </div>
+
+                        <!-- Progress 4: Customer Verification Rate -->
+                        <div class="admin-progress-card">
+                            <div class="progress-card-head">
+                                <span class="progress-card-title">
+                                    <i data-lucide="user-check" style="width: 15px; height: 15px; color: #8B5CF6;"></i>
+                                    <span>Customer Verification</span>
+                                </span>
+                                <span class="progress-card-pct" id="progCustPct" style="color: #8B5CF6;"><?= $curProg['custVerifRate']; ?>%</span>
+                            </div>
+                            <div class="progress-bar-track">
+                                <div class="progress-bar-fill" id="progCustFill" style="width: <?= $curProg['custVerifRate']; ?>%; background: #8B5CF6;"></div>
+                            </div>
+                            <div class="progress-card-sub" id="progCustSub">
+                                <?= $curProg['custVerified']; ?> of <?= $curProg['custTotal']; ?> registered homeowners with verified terms.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- =============================================================
+                         INTERACTIVE CHARTS BENTO GRID (8 CHART VISUALIZATIONS)
+                         ============================================================= -->
+
+                    <!-- ROW 1: SPLIT 65% / 35% -> AREA/LINE DUAL AXIS REVENUE + DONUT STATUS -->
+                    <div class="admin-charts-grid-split">
+                        <!-- Chart 1: Revenue Growth & Booking Volume Velocity (Area & Line Dual-Axis) -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="trending-up" style="width: 16px; height: 16px; color: var(--brand-primary);"></i>
+                                    <span>Revenue Growth &amp; Booking Volume Trends</span>
+                                </h3>
+                                <div class="chart-header-badges">
+                                    <span class="chart-badge badge-orange"><i data-lucide="dollar-sign" style="width: 11px; height: 11px;"></i> Area: Revenue (₹)</span>
+                                    <span class="chart-badge badge-blue"><i data-lucide="calendar" style="width: 11px; height: 11px;"></i> Line: Bookings</span>
+                                </div>
+                            </div>
+                            <div class="admin-card-body">
+                                <div class="chart-box chart-box-lg">
+                                    <canvas id="revenueVolumeTrendChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chart 2: Booking Status Distribution (Donut Chart) -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="pie-chart" style="width: 16px; height: 16px; color: #2563EB;"></i>
+                                    <span>Booking Status Distribution</span>
+                                </h3>
+                                <span class="chart-badge badge-green" id="donutStatusBadge">Real-time</span>
+                            </div>
+                            <div class="admin-card-body">
+                                <div class="donut-center-container">
+                                    <canvas id="bookingStatusDonutChart"></canvas>
+                                    <div class="donut-center-overlay">
+                                        <div class="donut-center-val" id="donutTotalBookings"><?= number_format($curKpis['totalBookings']); ?></div>
+                                        <div class="donut-center-lbl">Total Orders</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ROW 2: 2 COLUMNS -> MULTI-SERIES BAR CHART + STACKED CATEGORY STATUS MATRIX -->
+                    <div class="admin-charts-grid-2col">
+                        <!-- Chart 3: Comparative Booking Activity Bar Chart -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="bar-chart-2" style="width: 16px; height: 16px; color: #2563EB;"></i>
+                                    <span>Booking Activity, Fulfillment &amp; Cancellations</span>
+                                </h3>
+                                <span class="chart-badge">Daily Comparison</span>
+                            </div>
+                            <div class="admin-card-body">
+                                <div class="chart-box">
+                                    <canvas id="activityBarChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chart 4: Stacked Bar Chart by Category & Status -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="layers" style="width: 16px; height: 16px; color: #8B5CF6;"></i>
+                                    <span>Booking Status by Category (Stacked)</span>
+                                </h3>
+                                <span class="chart-badge">Trade Breakdown</span>
+                            </div>
+                            <div class="admin-card-body">
+                                <div class="chart-box">
+                                    <canvas id="categoryStatusStackedChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ROW 3: 2 COLUMNS -> POLAR AREA (CUSTOMER SPREAD) + RADAR (SERVICE CATEGORY FOOTPRINT) -->
+                    <div class="admin-charts-grid-2col">
+                        <!-- Chart 5: Customer Geographic Spread (Polar Area Chart) -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="compass" style="width: 16px; height: 16px; color: #EC4899;"></i>
+                                    <span>Customer Geographic Spread (Polar Area)</span>
+                                </h3>
+                                <span class="chart-badge badge-blue">Polar Radial Analysis</span>
+                            </div>
+                            <div class="admin-card-body">
+                                <div class="chart-box chart-box-donut">
+                                    <canvas id="customerCityPolarChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chart 6: Service Category Footprint (Radar Chart) -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="crosshair" style="width: 16px; height: 16px; color: var(--brand-primary);"></i>
+                                    <span>Service Category Footprint (Radar Chart)</span>
+                                </h3>
+                                <span class="chart-badge badge-orange">Radar Web Analysis</span>
+                            </div>
+                            <div class="admin-card-body">
+                                <div class="chart-box chart-box-donut">
+                                    <canvas id="serviceCategoryRadarChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ROW 4: 2 COLUMNS -> VERTICAL COLUMN BAR CHART (POPULAR SERVICES) + HORIZONTAL RANKING & LEADERBOARD (TOP MITRAS) -->
+                    <div class="admin-charts-grid-2col">
+                        <!-- Chart 7: Most Popular Services Ranking (Vertical Column Bar Chart) -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="bar-chart-3" style="width: 16px; height: 16px; color: #F59E0B;"></i>
+                                    <span>Most Popular Services (Vertical Columns)</span>
+                                </h3>
+                                <span class="chart-badge">Vertical Column Ranking</span>
+                            </div>
+                            <div class="admin-card-body">
+                                <div class="chart-box">
+                                    <canvas id="popularServicesColumnChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Chart 8: Top-Performing Service Providers (Horizontal Bar Chart + Performance Leaderboard) -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="user-check" style="width: 16px; height: 16px; color: #10B981;"></i>
+                                    <span>Top-Performing Service Providers (Mitras)</span>
+                                </h3>
+                                <span class="chart-badge badge-green">Fulfillment &amp; Ratings</span>
+                            </div>
+                            <div class="admin-card-body">
+                                <div class="chart-box" style="height: 160px;">
+                                    <canvas id="topMitrasChart"></canvas>
+                                </div>
+                                <div class="top-mitras-leaderboard-list" id="topMitrasLeaderboardList">
+                                    <?php if (!empty($activeData['topMitras']['details'])): ?>
+                                        <?php foreach ($activeData['topMitras']['details'] as $m): ?>
+                                            <div class="top-mitra-row">
+                                                <div class="mitra-row-left">
+                                                    <div class="mitra-row-avatar"><?= htmlspecialchars($m['initials']); ?></div>
+                                                    <div class="mitra-row-info">
+                                                        <span class="mitra-row-name"><?= htmlspecialchars($m['name']); ?></span>
+                                                        <span class="mitra-row-rating">★ <?= number_format($m['rating'], 1); ?> Rating</span>
+                                                    </div>
+                                                </div>
+                                                <div class="mitra-row-right">
+                                                    <span class="mitra-pill-jobs"><?= (int)$m['comp']; ?> Completed</span>
+                                                    <span class="mitra-pill-earn">₹<?= number_format($m['earn'], 2); ?></span>
+                                                </div>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    <?php else: ?>
+                                        <div style="font-size: 0.775rem; color: var(--admin-text-muted); text-align: center; padding: 0.5rem 0;">No verified Mitra dispatches recorded in this timeframe.</div>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                <!-- =============================================================
+                     TAB 2: SERVICE PROVIDER (MITRA) MANAGEMENT
+                     ============================================================= -->
+                <?php elseif ($activeTab === 'providers'): ?>
+                    <?php
+                    $statusFilter = trim($_GET['status'] ?? 'All');
+                    $sql = "SELECT * FROM `service_providers`";
+                    $params = [];
+                    if (in_array($statusFilter, ['Pending', 'Approved', 'Rejected'], true)) {
+                        $sql .= " WHERE `verification_status` = :status";
+                        $params[':status'] = $statusFilter;
+                    }
+                    $sql .= " ORDER BY `created_at` DESC";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $providers = $stmt->fetchAll();
+                    ?>
+
+                    <!-- Section: Horizontal Summary Stat Cards (Row of 6) -->
+                    <div class="admin-summary-grid">
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Total Submissions</span>
+                                <div class="summary-card-icon icon-blue">
+                                    <i data-lucide="users" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalProviders; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Pending Audits</span>
+                                <div class="summary-card-icon icon-amber">
+                                    <i data-lucide="clock" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricPendingProviders; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Approved Technicians</span>
+                                <div class="summary-card-icon icon-green">
+                                    <i data-lucide="check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricApprovedProviders; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Rejected Applications</span>
+                                <div class="summary-card-icon icon-red">
+                                    <i data-lucide="x" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= max(0, $metricTotalProviders - $metricApprovedProviders - $metricPendingProviders); ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Verified Clearance</span>
+                                <div class="summary-card-icon icon-teal">
+                                    <i data-lucide="shield-check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <?php $provClearance = $metricTotalProviders > 0 ? round(($metricApprovedProviders / $metricTotalProviders) * 100) : 0; ?>
+                            <div class="summary-card-val"><?= $provClearance; ?>%</div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Active Coverage</span>
+                                <div class="summary-card-icon icon-orange">
+                                    <i data-lucide="map-pin" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <?php $cityCount = (int)$pdo->query("SELECT COUNT(DISTINCT `city`) FROM `service_providers`")->fetchColumn(); ?>
+                            <div class="summary-card-val"><?= $cityCount; ?> Cities</div>
+                        </div>
+                    </div>
+
+                    <!-- Unified Toolbar Above Data Table (Matching Image 2) -->
+                    <div class="admin-table-toolbar">
+                        <div class="toolbar-left">
+                            <div class="toolbar-search-wrap">
+                                <i data-lucide="search" style="width: 15px; height: 15px; color: var(--admin-text-muted);"></i>
+                                <input type="text" id="providerSearchInput" placeholder="Search technician, skill, phone...">
+                            </div>
+                            <div class="toolbar-pills">
+                                <a href="index.php?tab=providers&status=All" class="toolbar-pill <?= $statusFilter === 'All' ? 'active' : ''; ?>">All (<?= $metricTotalProviders; ?>)</a>
+                                <a href="index.php?tab=providers&status=Pending" class="toolbar-pill <?= $statusFilter === 'Pending' ? 'active' : ''; ?>">Pending (<?= $metricPendingProviders; ?>)</a>
+                                <a href="index.php?tab=providers&status=Approved" class="toolbar-pill <?= $statusFilter === 'Approved' ? 'active' : ''; ?>">Approved (<?= $metricApprovedProviders; ?>)</a>
+                                <a href="index.php?tab=providers&status=Rejected" class="toolbar-pill <?= $statusFilter === 'Rejected' ? 'active' : ''; ?>">Rejected</a>
+                            </div>
+                        </div>
+                        <div class="toolbar-right">
+                            <button type="button" class="toolbar-btn-outline" onclick="window.print();" title="Export technician roster">
+                                <i data-lucide="download" style="width: 13px; height: 13px;"></i>
+                                <span>Export CSV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Modern Card Container for Mitra Table -->
+                    <div class="admin-card">
+                        <div class="admin-card-body p-0">
+                            <div class="admin-table-responsive">
+                                <table class="admin-table" id="providersMasterTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Mitra Info</th>
+                                            <th>Contact</th>
+                                            <th>Skill &amp; Experience</th>
+                                            <th>City &amp; Locality</th>
+                                            <th>Status</th>
+                                            <th>Registered Date</th>
+                                            <th>Review Decision</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php if (empty($providers)): ?>
+                                            <tr>
+                                                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--admin-text-muted);">
+                                                    No service providers found matching the selected filter.
+                                                </td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($providers as $prov): ?>
+                                                <tr class="provider-row" data-search="<?= strtolower(htmlspecialchars($prov['full_name'] . ' ' . $prov['primary_skill'] . ' ' . $prov['city'] . ' ' . $prov['mobile'])); ?>">
+                                                    <td>
+                                                        <div style="font-weight: 700; color: var(--admin-text-main); font-size: 0.95rem;"><?= htmlspecialchars($prov['full_name']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);">ID: #<?= (int)$prov['id']; ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div><?= htmlspecialchars($prov['mobile']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($prov['email']); ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div style="font-weight: 700;"><?= htmlspecialchars($prov['primary_skill']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($prov['experience_years']); ?> experience</div>
+                                                    </td>
+                                                    <td>
+                                                        <div><?= htmlspecialchars($prov['city']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($prov['service_area'] ?? 'City-wide'); ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <?php
+                                                        $vSt = $prov['verification_status'];
+                                                        $pClass = match($vSt) {
+                                                            'Approved' => 'status-approved',
+                                                            'Pending'  => 'status-pending',
+                                                            'Rejected' => 'status-rejected',
+                                                            default    => 'status-pending'
+                                                        };
+                                                        ?>
+                                                        <span class="status-pill <?= $pClass; ?>">
+                                                            <span class="status-dot"></span>
+                                                            <span><?= htmlspecialchars($vSt); ?></span>
+                                                        </span>
+                                                        <?php if ($vSt === 'Rejected' && !empty($prov['rejection_reason'])): ?>
+                                                            <div style="font-size: 0.725rem; color: var(--status-red); margin-top: 0.25rem; max-width: 200px;">
+                                                                <?= htmlspecialchars($prov['rejection_reason']); ?>
+                                                            </div>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td><?= date('d M Y', strtotime($prov['created_at'])); ?></td>
+                                                    <td>
+                                                        <div class="table-actions-cluster">
+                                                            <?php if ($vSt !== 'Approved'): ?>
+                                                                <form method="POST" onsubmit="return confirm('Approve verification for <?= htmlspecialchars(addslashes($prov['full_name'])); ?>?');">
+                                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
+                                                                    <input type="hidden" name="action" value="approve_provider">
+                                                                    <input type="hidden" name="provider_id" value="<?= (int)$prov['id']; ?>">
+                                                                    <button type="submit" class="action-circle-btn action-circle-approve" title="Approve Mitra">
+                                                                        <i data-lucide="check" style="width: 15px; height: 15px;"></i>
+                                                                    </button>
+                                                                </form>
+                                                            <?php endif; ?>
+
+                                                            <?php if ($vSt !== 'Rejected'): ?>
+                                                                <form method="POST" onsubmit="return handleRejectPrompt(this, '<?= htmlspecialchars(addslashes($prov['full_name'])); ?>');">
+                                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
+                                                                    <input type="hidden" name="action" value="reject_provider">
+                                                                    <input type="hidden" name="provider_id" value="<?= (int)$prov['id']; ?>">
+                                                                    <input type="hidden" name="rejection_reason" value="">
+                                                                    <button type="submit" class="action-circle-btn action-circle-reject" title="Reject Application">
+                                                                        <i data-lucide="x" style="width: 15px; height: 15px;"></i>
+                                                                    </button>
+                                                                </form>
+                                                            <?php endif; ?>
+
+                                                            <?php if ($vSt !== 'Pending'): ?>
+                                                                <form method="POST" onsubmit="return confirm('Reset verification status to Pending?');">
+                                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
+                                                                    <input type="hidden" name="action" value="reset_provider_pending">
+                                                                    <input type="hidden" name="provider_id" value="<?= (int)$prov['id']; ?>">
+                                                                    <button type="submit" class="action-circle-btn action-circle-neutral" title="Reset to Pending">
+                                                                        <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
+                                                                    </button>
+                                                                </form>
+                                                            <?php endif; ?>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                <!-- =============================================================
+                     TAB 3: BOOKINGS MANAGEMENT & DISPATCH PIPELINE
+                     ============================================================= -->
+                <?php elseif ($activeTab === 'bookings'): ?>
+                    <?php
+                    $statusFilter = trim($_GET['status'] ?? 'All');
+                    $sql = "SELECT * FROM `bookings`";
+                    $params = [];
+                    if (in_array($statusFilter, ['Confirmed', 'In Progress', 'Completed', 'Cancelled'], true)) {
+                        $sql .= " WHERE `status` = :status";
+                        $params[':status'] = $statusFilter;
+                    }
+                    $sql .= " ORDER BY `id` DESC";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $bookings = $stmt->fetchAll();
+                    ?>
+
+                    <!-- Section: Horizontal Summary Stat Cards (Row of 6) -->
+                    <div class="admin-summary-grid">
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Total Submissions</span>
+                                <div class="summary-card-icon icon-blue">
+                                    <i data-lucide="layers" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalBookings; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Confirmed Orders</span>
+                                <div class="summary-card-icon icon-amber">
+                                    <i data-lucide="calendar" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $cntConfirmed ?? (int)($pdo->query("SELECT COUNT(*) FROM `bookings` WHERE `status`='Confirmed'")->fetchColumn()); ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">In Progress (Live)</span>
+                                <div class="summary-card-icon icon-teal">
+                                    <i data-lucide="clock" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $cntInProgress ?? (int)($pdo->query("SELECT COUNT(*) FROM `bookings` WHERE `status`='In Progress'")->fetchColumn()); ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Completed Seats</span>
+                                <div class="summary-card-icon icon-green">
+                                    <i data-lucide="check-circle-2" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricCompletedBookings; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Cancelled / Void</span>
+                                <div class="summary-card-icon icon-red">
+                                    <i data-lucide="x-circle" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricCancelledBookings; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Delivered Revenue</span>
+                                <div class="summary-card-icon icon-orange">
+                                    <i data-lucide="wallet" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val">₹<?= number_format($metricTotalRevenue, 2); ?></div>
+                        </div>
+                    </div>
+
+                    <!-- Single Unified Toolbar -->
+                    <div class="admin-table-toolbar">
+                        <div class="toolbar-left">
+                            <div class="toolbar-search-wrap">
+                                <i data-lucide="search" style="width: 15px; height: 15px; color: var(--admin-text-muted);"></i>
+                                <input type="text" id="bookingsSearchInput" placeholder="Search ref, customer, address...">
+                            </div>
+                            <div class="toolbar-pills">
+                                <a href="index.php?tab=bookings&status=All" class="toolbar-pill <?= $statusFilter === 'All' ? 'active' : ''; ?>">All (<?= $metricTotalBookings; ?>)</a>
+                                <a href="index.php?tab=bookings&status=Confirmed" class="toolbar-pill <?= $statusFilter === 'Confirmed' ? 'active' : ''; ?>">Confirmed</a>
+                                <a href="index.php?tab=bookings&status=In Progress" class="toolbar-pill <?= $statusFilter === 'In Progress' ? 'active' : ''; ?>">In Progress</a>
+                                <a href="index.php?tab=bookings&status=Completed" class="toolbar-pill <?= $statusFilter === 'Completed' ? 'active' : ''; ?>">Completed (<?= $metricCompletedBookings; ?>)</a>
+                                <a href="index.php?tab=bookings&status=Cancelled" class="toolbar-pill <?= $statusFilter === 'Cancelled' ? 'active' : ''; ?>">Cancelled</a>
+                            </div>
+                        </div>
+                        <div class="toolbar-right">
+                            <button type="button" class="toolbar-btn-outline" onclick="window.print();" title="Export Bookings Pipeline">
+                                <i data-lucide="download" style="width: 13px; height: 13px;"></i>
+                                <span>Export CSV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Modern Card Container for Bookings Table -->
+                    <div class="admin-card">
+                        <div class="admin-card-body p-0">
+                            <div class="admin-table-responsive">
+                                <table class="admin-table" id="bookingsMasterTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Ref Code</th>
+                                            <th>Customer Details</th>
+                                            <th>Service &amp; Category</th>
+                                            <th>Address &amp; City</th>
+                                            <th>Scheduled Slot</th>
+                                            <th>Assigned Mitra</th>
+                                            <th>Price</th>
+                                            <th>Status</th>
+                                            <th>Update Decision</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php if (empty($bookings)): ?>
+                                            <tr>
+                                                <td colspan="9" style="text-align: center; padding: 3rem; color: var(--admin-text-muted);">
+                                                    No bookings found matching current filter criteria.
+                                                </td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($bookings as $b): ?>
+                                                <tr class="booking-data-row" data-search="<?= strtolower(htmlspecialchars($b['booking_reference'] . ' ' . $b['customer_name'] . ' ' . $b['service_category'] . ' ' . $b['city'] . ' ' . ($b['mitra_name'] ?? ''))); ?>">
+                                                    <td>
+                                                        <strong style="color: var(--brand-primary); font-family: monospace; font-size: 0.85rem;"><?= htmlspecialchars($b['booking_reference']); ?></strong>
+                                                    </td>
+                                                    <td>
+                                                        <div style="font-weight: 700; color: var(--admin-text-main);"><?= htmlspecialchars($b['customer_name']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($b['phone']); ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div style="font-weight: 600;"><?= htmlspecialchars($b['service_category']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($b['sub_service']); ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div><?= htmlspecialchars($b['city']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?= htmlspecialchars($b['address']); ?>">
+                                                            <?= htmlspecialchars($b['address']); ?>
+                                                        </div>
+                                                    </td>
+                                                    <td>
+                                                        <div style="font-weight: 600;"><?= date('d M Y', strtotime($b['service_date'])); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($b['time_slot']); ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div><?= htmlspecialchars($b['mitra_name'] ?: 'Unassigned'); ?></div>
+                                                        <?php if (!empty($b['mitra_rating'])): ?>
+                                                            <div style="font-size: 0.725rem; color: #D97706; font-weight: 700;">★ <?= number_format((float)$b['mitra_rating'], 1); ?></div>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td><strong>₹<?= number_format((float)$b['estimated_price'], 2); ?></strong></td>
+                                                    <td>
+                                                        <?php
+                                                        $st = $b['status'];
+                                                        $bClass = match($st) {
+                                                            'Confirmed'   => 'status-confirmed',
+                                                            'In Progress' => 'status-progress',
+                                                            'Completed'   => 'status-completed',
+                                                            'Cancelled'   => 'status-cancelled',
+                                                            default       => 'status-pending'
+                                                        };
+                                                        ?>
+                                                        <span class="status-pill <?= $bClass; ?>">
+                                                            <span class="status-dot"></span>
+                                                            <span><?= htmlspecialchars($st); ?></span>
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <form method="POST" style="display: flex; gap: 0.35rem; align-items: center;">
+                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
+                                                            <input type="hidden" name="action" value="update_booking_status">
+                                                            <input type="hidden" name="booking_id" value="<?= (int)$b['id']; ?>">
+                                                            <select name="status" class="toolbar-select" style="padding: 0.35rem 0.65rem; font-size: 0.785rem;">
+                                                                <option value="Confirmed" <?= $st === 'Confirmed' ? 'selected' : ''; ?>>Confirmed</option>
+                                                                <option value="In Progress" <?= $st === 'In Progress' ? 'selected' : ''; ?>>In Progress</option>
+                                                                <option value="Completed" <?= $st === 'Completed' ? 'selected' : ''; ?>>Completed</option>
+                                                                <option value="Cancelled" <?= $st === 'Cancelled' ? 'selected' : ''; ?>>Cancelled</option>
+                                                            </select>
+                                                            <button type="submit" class="action-circle-btn action-circle-neutral" title="Commit status transition">
+                                                                <i data-lucide="save" style="width: 14px; height: 14px;"></i>
+                                                            </button>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                <!-- =============================================================
+                     TAB 4: CUSTOMERS DIRECTORY
+                     ============================================================= -->
+                <?php elseif ($activeTab === 'customers'): ?>
+                    <?php
+                    $search = trim($_GET['q'] ?? '');
+                    $sql = "SELECT * FROM `customers`";
+                    $params = [];
+                    if (!empty($search)) {
+                        $sql .= " WHERE `full_name` LIKE :q OR `email` LIKE :q OR `mobile` LIKE :q OR `city` LIKE :q";
+                        $params[':q'] = "%{$search}%";
+                    }
+                    $sql .= " ORDER BY `created_at` DESC";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $customers = $stmt->fetchAll();
+                    ?>
+
+                    <!-- Section: Horizontal Summary Stat Cards (Row of 6) -->
+                    <div class="admin-summary-grid">
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Total Homeowners</span>
+                                <div class="summary-card-icon icon-blue">
+                                    <i data-lucide="users" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalCustomers; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Verified Profiles</span>
+                                <div class="summary-card-icon icon-green">
+                                    <i data-lucide="shield-check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalCustomers; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Active Consumers</span>
+                                <div class="summary-card-icon icon-teal">
+                                    <i data-lucide="user-check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalCustomers; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Terms Accepted</span>
+                                <div class="summary-card-icon icon-purple">
+                                    <i data-lucide="file-check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val">100%</div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Active Metro Hubs</span>
+                                <div class="summary-card-icon icon-amber">
+                                    <i data-lucide="map-pin" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <?php $custCities = (int)$pdo->query("SELECT COUNT(DISTINCT `city`) FROM `customers`")->fetchColumn(); ?>
+                            <div class="summary-card-val"><?= max(1, $custCities); ?> Cities</div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Doorstep Orders</span>
+                                <div class="summary-card-icon icon-orange">
+                                    <i data-lucide="shopping-bag" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalBookings; ?></div>
+                        </div>
+                    </div>
+
+                    <!-- Single Unified Toolbar -->
+                    <div class="admin-table-toolbar">
+                        <div class="toolbar-left">
+                            <form method="GET" style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="hidden" name="tab" value="customers">
+                                <div class="toolbar-search-wrap">
+                                    <i data-lucide="search" style="width: 15px; height: 15px; color: var(--admin-text-muted);"></i>
+                                    <input type="text" name="q" value="<?= htmlspecialchars($search); ?>" placeholder="Search name, phone, email...">
+                                </div>
+                                <button type="submit" class="toolbar-btn-primary" style="padding: 0.42rem 0.95rem;">Search</button>
+                                <?php if (!empty($search)): ?>
+                                    <a href="index.php?tab=customers" class="toolbar-btn-outline" style="padding: 0.42rem 0.85rem;">Clear</a>
+                                <?php endif; ?>
+                            </form>
+                        </div>
+                        <div class="toolbar-right">
+                            <button type="button" class="toolbar-btn-outline" onclick="window.print();" title="Export Customer Directory">
+                                <i data-lucide="download" style="width: 13px; height: 13px;"></i>
+                                <span>Export CSV</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Modern Card Container for Customers Table -->
+                    <div class="admin-card">
+                        <div class="admin-card-body p-0">
                             <div class="admin-table-responsive">
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>Applicant Mitra</th>
-                                            <th>Skill / Trade</th>
-                                            <th>Experience</th>
-                                            <th>Coverage City</th>
-                                            <th>Registered On</th>
-                                            <th>Actions</th>
+                                            <th>Customer Name</th>
+                                            <th>Mobile &amp; Email</th>
+                                            <th>Location</th>
+                                            <th>Status</th>
+                                            <th>Terms Accepted</th>
+                                            <th>Joined Date</th>
+                                            <th>Action</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php foreach ($pendingList as $p): ?>
+                                        <?php if (empty($customers)): ?>
                                             <tr>
-                                                <td>
-                                                    <div style="font-weight: 700; color: var(--admin-navy);"><?= htmlspecialchars($p['full_name']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($p['mobile']); ?> &bull; <?= htmlspecialchars($p['email']); ?></div>
+                                                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--admin-text-muted);">
+                                                    No registered customers found matching search query.
                                                 </td>
-                                                <td><span class="badge-status" style="background: #F1F5F9; color: #334155; border: 1px solid #CBD5E1;"><?= htmlspecialchars($p['primary_skill']); ?></span></td>
-                                                <td><?= htmlspecialchars($p['experience_years']); ?></td>
-                                                <td><?= htmlspecialchars($p['city']); ?> <?= !empty($p['service_area']) ? '(' . htmlspecialchars($p['service_area']) . ')' : ''; ?></td>
-                                                <td><?= date('d M Y, h:i A', strtotime($p['created_at'])); ?></td>
-                                                <td>
-                                                    <div style="display: flex; gap: 0.5rem;">
-                                                        <!-- Quick Approve Form -->
-                                                        <form method="POST" onsubmit="return confirm('Approve <?= htmlspecialchars(addslashes($p['full_name'])); ?> as a verified KaamMitra service provider?');">
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($customers as $c): ?>
+                                                <tr>
+                                                    <td>
+                                                        <div style="font-weight: 700; color: var(--admin-text-main); font-size: 0.95rem;"><?= htmlspecialchars($c['full_name']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);">ID: #<?= (int)$c['id']; ?> &bull; <?= htmlspecialchars($c['gender'] ?? 'Not specified'); ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div><?= htmlspecialchars($c['mobile']); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($c['email']); ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <div><?= htmlspecialchars($c['city'] ?: 'City not set'); ?></div>
+                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($c['address_line'] ?? ''); ?></div>
+                                                    </td>
+                                                    <td>
+                                                        <?php
+                                                        $cStatus = $c['status'] ?? 'Active';
+                                                        $custClass = ($cStatus === 'Active') ? 'status-active' : 'status-deactivated';
+                                                        ?>
+                                                        <span class="status-pill <?= $custClass; ?>">
+                                                            <span class="status-dot"></span>
+                                                            <span><?= htmlspecialchars($cStatus); ?></span>
+                                                        </span>
+                                                    </td>
+                                                    <td>
+                                                        <?php if (!empty($c['terms_accepted'])): ?>
+                                                            <span style="color: var(--status-emerald); font-weight: 800; font-size: 0.8rem;">✓ Verified</span>
+                                                            <div style="font-size: 0.7rem; color: var(--admin-text-muted);"><?= htmlspecialchars($c['terms_accepted_at'] ?? ''); ?></div>
+                                                        <?php else: ?>
+                                                            <span style="color: var(--admin-text-light); font-size: 0.8rem;">Pending</span>
+                                                        <?php endif; ?>
+                                                    </td>
+                                                    <td><?= date('d M Y', strtotime($c['created_at'])); ?></td>
+                                                    <td>
+                                                        <form method="POST" onsubmit="return confirm('Toggle account clearance for <?= htmlspecialchars(addslashes($c['full_name'])); ?>?');">
                                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                            <input type="hidden" name="action" value="approve_provider">
-                                                            <input type="hidden" name="provider_id" value="<?= (int)$p['id']; ?>">
-                                                            <button type="submit" class="btn-admin btn-admin-success" title="Approve credentials">
-                                                                <i data-lucide="check" style="width: 14px; height: 14px;"></i>
-                                                                <span>Approve</span>
-                                                            </button>
+                                                            <input type="hidden" name="action" value="update_customer_status">
+                                                            <input type="hidden" name="customer_id" value="<?= (int)$c['id']; ?>">
+                                                            <input type="hidden" name="status" value="<?= $cStatus === 'Active' ? 'Suspended' : 'Active'; ?>">
+                                                            <?php if ($cStatus === 'Active'): ?>
+                                                                <button type="submit" class="action-circle-btn action-circle-reject" title="Suspend Customer Account">
+                                                                    <i data-lucide="user-x" style="width: 15px; height: 15px;"></i>
+                                                                </button>
+                                                            <?php else: ?>
+                                                                <button type="submit" class="action-circle-btn action-circle-approve" title="Reactivate Account">
+                                                                    <i data-lucide="user-check" style="width: 15px; height: 15px;"></i>
+                                                                </button>
+                                                            <?php endif; ?>
+                                                        </form>
+                                                    </td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                <!-- =============================================================
+                     TAB 5: OPERATIONAL REPORTS & AGGREGATES
+                     ============================================================= -->
+                <?php elseif ($activeTab === 'reports'): ?>
+                    <?php
+                    $catStmt = $pdo->query("
+                        SELECT `service_category`, COUNT(*) as `total`, SUM(`estimated_price`) as `revenue`
+                        FROM `bookings`
+                        GROUP BY `service_category`
+                        ORDER BY `total` DESC
+                    ");
+                    $catStats = $catStmt ? $catStmt->fetchAll() : [];
+
+                    $cityStmt = $pdo->query("
+                        SELECT `city`, COUNT(*) as `provider_count`
+                        FROM `service_providers`
+                        WHERE `verification_status` = 'Approved'
+                        GROUP BY `city`
+                        ORDER BY `provider_count` DESC
+                    ");
+                    $cityStats = $cityStmt ? $cityStmt->fetchAll() : [];
+                    ?>
+
+                    <!-- Section: Horizontal Summary Stat Cards (Row of 6) -->
+                    <div class="admin-summary-grid">
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Total Volume</span>
+                                <div class="summary-card-icon icon-blue">
+                                    <i data-lucide="calendar" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalBookings; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Delivered Orders</span>
+                                <div class="summary-card-icon icon-green">
+                                    <i data-lucide="check-circle" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricCompletedBookings; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Completion Velocity</span>
+                                <div class="summary-card-icon icon-teal">
+                                    <i data-lucide="gauge" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <?php 
+                            $validOrders = $metricTotalBookings - $metricCancelledBookings;
+                            $compRate = $validOrders > 0 ? round(($metricCompletedBookings / $validOrders) * 100, 1) : 0;
+                            ?>
+                            <div class="summary-card-val"><?= $compRate; ?>%</div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Gross Value</span>
+                                <div class="summary-card-icon icon-orange">
+                                    <i data-lucide="wallet" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val">₹<?= number_format($metricTotalRevenue, 2); ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Active Technicians</span>
+                                <div class="summary-card-icon icon-amber">
+                                    <i data-lucide="users" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricApprovedProviders; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Customer Base</span>
+                                <div class="summary-card-icon icon-purple">
+                                    <i data-lucide="award" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalCustomers; ?></div>
+                        </div>
+                    </div>
+
+                    <!-- Grid of Category and City Reports Cards -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
+                        <!-- Breakdown by Category -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="layers" style="width: 16px; height: 16px; color: var(--brand-primary);"></i>
+                                    <span>Bookings by Service Category</span>
+                                </h3>
+                            </div>
+                            <div class="admin-card-body p-0">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Trade Category</th>
+                                            <th>Bookings</th>
+                                            <th>Gross Value</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($catStats as $cs): ?>
+                                            <tr>
+                                                <td><strong><?= htmlspecialchars($cs['service_category']); ?></strong></td>
+                                                <td><?= number_format($cs['total']); ?></td>
+                                                <td>₹<?= number_format((float)$cs['revenue'], 2); ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Breakdown by City -->
+                        <div class="admin-card">
+                            <div class="admin-card-head">
+                                <h3 class="admin-card-title">
+                                    <i data-lucide="map-pin" style="width: 16px; height: 16px; color: var(--status-teal);"></i>
+                                    <span>Approved Technicians by City</span>
+                                </h3>
+                            </div>
+                            <div class="admin-card-body p-0">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Operational City</th>
+                                            <th>Verified Mitras</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($cityStats as $cst): ?>
+                                            <tr>
+                                                <td><strong><?= htmlspecialchars($cst['city']); ?></strong></td>
+                                                <td><?= number_format($cst['provider_count']); ?> Active Mitras</td>
+                                                <td>
+                                                    <span class="status-pill status-approved">
+                                                        <span class="status-dot"></span>
+                                                        <span>Live Dispatch</span>
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                <!-- =============================================================
+                     TAB 6: ADMINISTRATOR ACCOUNT GOVERNANCE (SUPER ADMIN ONLY)
+                     ============================================================= -->
+                <?php elseif ($activeTab === 'admins' && $isSuperAdmin): ?>
+                    <?php
+                    $adminsStmt = $pdo->query("SELECT * FROM `admins` ORDER BY `id` ASC");
+                    $adminAccounts = $adminsStmt->fetchAll();
+                    ?>
+
+                    <!-- Section: Horizontal Summary Stat Cards (Row of 6) -->
+                    <div class="admin-summary-grid">
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Configured Admins</span>
+                                <div class="summary-card-icon icon-purple">
+                                    <i data-lucide="shield-check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= count($adminAccounts); ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Active Clearance</span>
+                                <div class="summary-card-icon icon-green">
+                                    <i data-lucide="check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $metricTotalAdmins; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Super Administrators</span>
+                                <div class="summary-card-icon icon-amber">
+                                    <i data-lucide="crown" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val">1</div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Standard Operators</span>
+                                <div class="summary-card-icon icon-blue">
+                                    <i data-lucide="user" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= max(0, count($adminAccounts) - 1); ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Security Tier</span>
+                                <div class="summary-card-icon icon-teal">
+                                    <i data-lucide="lock" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val">RBAC L3</div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Session State</span>
+                                <div class="summary-card-icon icon-orange">
+                                    <i data-lucide="key" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val">Active</div>
+                        </div>
+                    </div>
+
+                    <!-- Single Unified Toolbar -->
+                    <div class="admin-table-toolbar">
+                        <div class="toolbar-left">
+                            <div class="toolbar-search-wrap">
+                                <i data-lucide="search" style="width: 15px; height: 15px; color: var(--admin-text-muted);"></i>
+                                <input type="text" id="adminAccountSearch" placeholder="Search admin username or email...">
+                            </div>
+                        </div>
+                        <div class="toolbar-right">
+                            <button type="button" class="toolbar-btn-primary" onclick="document.getElementById('createAdminSection').scrollIntoView({behavior: 'smooth'});">
+                                <i data-lucide="user-plus" style="width: 14px; height: 14px;"></i>
+                                <span>Add New Administrator</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Modern Card Container for Admins Table -->
+                    <div class="admin-card">
+                        <div class="admin-card-head">
+                            <h3 class="admin-card-title">
+                                <i data-lucide="shield-check" style="width: 17px; height: 17px; color: var(--status-purple);"></i>
+                                <span>Configured Administrative Users</span>
+                            </h3>
+                        </div>
+                        <div class="admin-card-body p-0">
+                            <div class="admin-table-responsive">
+                                <table class="admin-table" id="adminUsersMasterTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Admin ID (Username)</th>
+                                            <th>Full Name &amp; Email</th>
+                                            <th>Current Role</th>
+                                            <th>Status</th>
+                                            <th>Last Login</th>
+                                            <th>Role Management</th>
+                                            <th>Account Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($adminAccounts as $adm): ?>
+                                            <tr class="admin-user-row" data-search="<?= strtolower(htmlspecialchars($adm['username'] . ' ' . $adm['full_name'] . ' ' . $adm['email'])); ?>">
+                                                <td>
+                                                    <strong style="color: var(--admin-text-main); font-size: 0.95rem;"><?= htmlspecialchars($adm['username']); ?></strong>
+                                                    <div style="font-size: 0.725rem; color: var(--admin-text-muted);">Admin ID: #<?= (int)$adm['id']; ?></div>
+                                                </td>
+                                                <td>
+                                                    <div><?= htmlspecialchars($adm['full_name'] ?: 'N/A'); ?></div>
+                                                    <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($adm['email'] ?: 'No email configured'); ?></div>
+                                                </td>
+                                                <td>
+                                                    <?php if ($adm['role'] === 'super_admin'): ?>
+                                                        <span class="status-pill" style="background: var(--status-purple-soft); color: var(--status-purple); border: 1px solid var(--status-purple-border);">Super Admin</span>
+                                                    <?php else: ?>
+                                                        <span class="status-pill" style="background: var(--status-blue-soft); color: var(--status-blue); border: 1px solid var(--status-blue-border);">Admin</span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <?php if ((int)$adm['is_active'] === 1): ?>
+                                                        <span class="status-pill status-active"><span class="status-dot"></span><span>Active</span></span>
+                                                    <?php else: ?>
+                                                        <span class="status-pill status-deactivated"><span class="status-dot"></span><span>Deactivated</span></span>
+                                                    <?php endif; ?>
+                                                </td>
+                                                <td>
+                                                    <?= !empty($adm['last_login_at']) ? date('d M Y, h:i A', strtotime($adm['last_login_at'])) : '<span style="color: #94A3B8;">Never</span>'; ?>
+                                                </td>
+                                                <td>
+                                                    <form method="POST" style="display: flex; gap: 0.35rem;" onsubmit="return confirm('Change clearance role for <?= htmlspecialchars(addslashes($adm['username'])); ?>?');">
+                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
+                                                        <input type="hidden" name="action" value="update_admin_role">
+                                                        <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
+                                                        <select name="new_role" class="toolbar-select" style="padding: 0.35rem 0.65rem; font-size: 0.785rem;">
+                                                            <option value="admin" <?= $adm['role'] === 'admin' ? 'selected' : ''; ?>>admin</option>
+                                                            <option value="super_admin" <?= $adm['role'] === 'super_admin' ? 'selected' : ''; ?>>super_admin</option>
+                                                        </select>
+                                                        <button type="submit" class="action-circle-btn action-circle-neutral" title="Update role">
+                                                            <i data-lucide="save" style="width: 14px; height: 14px;"></i>
+                                                        </button>
+                                                    </form>
+                                                </td>
+                                                <td>
+                                                    <div class="table-actions-cluster">
+                                                        <!-- Toggle Active / Deactivate -->
+                                                        <form method="POST" onsubmit="return confirm('Are you sure you want to <?= (int)$adm['is_active'] === 1 ? 'deactivate' : 'activate'; ?> account <?= htmlspecialchars(addslashes($adm['username'])); ?>?');">
+                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
+                                                            <input type="hidden" name="action" value="toggle_admin_status">
+                                                            <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
+                                                            <input type="hidden" name="new_status" value="<?= (int)$adm['is_active'] === 1 ? '0' : '1'; ?>">
+                                                            <?php if ((int)$adm['is_active'] === 1): ?>
+                                                                <button type="submit" class="action-circle-btn action-circle-reject" title="Deactivate Account">
+                                                                    <i data-lucide="slash" style="width: 14px; height: 14px;"></i>
+                                                                </button>
+                                                            <?php else: ?>
+                                                                <button type="submit" class="action-circle-btn action-circle-approve" title="Activate Account">
+                                                                    <i data-lucide="check" style="width: 14px; height: 14px;"></i>
+                                                                </button>
+                                                            <?php endif; ?>
                                                         </form>
 
-                                                        <!-- Reject Trigger (opens prompt) -->
-                                                        <form method="POST" onsubmit="var reason = prompt('Please enter the rejection reason for <?= htmlspecialchars(addslashes($p['full_name'])); ?>:'); if (!reason || !reason.trim()) { alert('Rejection reason is required.'); return false; } document.getElementById('reject_reason_<?= $p['id']; ?>').value = reason; return true;">
+                                                        <!-- Password Reset -->
+                                                        <form method="POST" onsubmit="var p = prompt('Enter a new temporary password for <?= htmlspecialchars(addslashes($adm['username'])); ?> (minimum 8 characters):'); if (!p || p.length < 8) { alert('Password must be at least 8 characters.'); return false; } document.getElementById('pwd_reset_<?= $adm['id']; ?>').value = p; return true;">
                                                             <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                            <input type="hidden" name="action" value="reject_provider">
-                                                            <input type="hidden" name="provider_id" value="<?= (int)$p['id']; ?>">
-                                                            <input type="hidden" name="rejection_reason" id="reject_reason_<?= $p['id']; ?>" value="">
-                                                            <button type="submit" class="btn-admin btn-admin-danger" title="Reject application">
-                                                                <i data-lucide="x" style="width: 14px; height: 14px;"></i>
-                                                                <span>Reject</span>
+                                                            <input type="hidden" name="action" value="reset_admin_password">
+                                                            <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
+                                                            <input type="hidden" name="new_password" id="pwd_reset_<?= $adm['id']; ?>" value="">
+                                                            <button type="submit" class="action-circle-btn action-circle-neutral" title="Reset Password">
+                                                                <i data-lucide="key" style="width: 14px; height: 14px;"></i>
                                                             </button>
                                                         </form>
                                                     </div>
@@ -480,831 +2076,1117 @@ $csrfToken = getCsrfToken();
                                     </tbody>
                                 </table>
                             </div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-
-                <!-- Recent Bookings Feed -->
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <h3 class="admin-card-title">
-                            <i data-lucide="calendar" style="width: 18px; height: 18px; color: var(--admin-blue);"></i>
-                            <span>Recent Doorstep Bookings</span>
-                        </h3>
-                        <a href="index.php?tab=bookings" class="btn-admin btn-admin-outline">View All Bookings</a>
-                    </div>
-                    <div class="admin-card-body" style="padding: 0;">
-                        <?php
-                        $recentBStmt = $pdo->query("SELECT * FROM `bookings` ORDER BY `id` DESC LIMIT 6");
-                        $recentBookings = $recentBStmt->fetchAll();
-                        ?>
-                        <div class="admin-table-responsive">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>Ref Code</th>
-                                        <th>Customer</th>
-                                        <th>Service Category</th>
-                                        <th>City</th>
-                                        <th>Service Date</th>
-                                        <th>Assigned Mitra</th>
-                                        <th>Est. Amount</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($recentBookings as $b): ?>
-                                        <tr>
-                                            <td><strong style="color: var(--admin-primary);"><?= htmlspecialchars($b['booking_reference']); ?></strong></td>
-                                            <td>
-                                                <div style="font-weight: 700;"><?= htmlspecialchars($b['customer_name']); ?></div>
-                                                <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($b['phone']); ?></div>
-                                            </td>
-                                            <td>
-                                                <div style="font-weight: 600;"><?= htmlspecialchars($b['service_category']); ?></div>
-                                                <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($b['sub_service']); ?></div>
-                                            </td>
-                                            <td><?= htmlspecialchars($b['city']); ?></td>
-                                            <td><?= htmlspecialchars($b['service_date']); ?> (<?= htmlspecialchars($b['time_slot']); ?>)</td>
-                                            <td><?= htmlspecialchars($b['mitra_name'] ?: 'Auto-Dispatching'); ?></td>
-                                            <td><strong>₹<?= number_format((float)$b['estimated_price'], 2); ?></strong></td>
-                                            <td>
-                                                <?php
-                                                $st = $b['status'];
-                                                $badgeClass = match($st) {
-                                                    'Confirmed' => 'badge-pending',
-                                                    'In Progress' => 'badge-completed',
-                                                    'Completed' => 'badge-approved',
-                                                    'Cancelled' => 'badge-rejected',
-                                                    default => 'badge-pending'
-                                                };
-                                                ?>
-                                                <span class="badge-status <?= $badgeClass; ?>"><?= htmlspecialchars($st); ?></span>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
                         </div>
                     </div>
-                </div>
 
-            <!-- =============================================================
-                 TAB 2: SERVICE PROVIDER MANAGEMENT & VERIFICATION
-                 ============================================================= -->
-            <?php elseif ($activeTab === 'providers'): ?>
-                <?php
-                $statusFilter = trim($_GET['status'] ?? 'All');
-                $sql = "SELECT * FROM `service_providers`";
-                $params = [];
-                if (in_array($statusFilter, ['Pending', 'Approved', 'Rejected'], true)) {
-                    $sql .= " WHERE `verification_status` = :status";
-                    $params[':status'] = $statusFilter;
-                }
-                $sql .= " ORDER BY `created_at` DESC";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-                $providers = $stmt->fetchAll();
-                ?>
-
-                <div class="admin-page-header">
-                    <div>
-                        <h2 class="admin-page-title">Service Provider (Mitra) Management</h2>
-                        <p class="admin-page-desc">Review verification requests, manage approved technicians, and update credential status.</p>
-                    </div>
-                    <div class="admin-filter-bar">
-                        <a href="index.php?tab=providers&status=All" class="admin-filter-pill <?= $statusFilter === 'All' ? 'active' : ''; ?>">All (<?= $metricTotalProviders; ?>)</a>
-                        <a href="index.php?tab=providers&status=Pending" class="admin-filter-pill <?= $statusFilter === 'Pending' ? 'active' : ''; ?>" style="<?= $metricPendingProviders > 0 ? 'border-color: #F59E0B;' : ''; ?>">Pending (<?= $metricPendingProviders; ?>)</a>
-                        <a href="index.php?tab=providers&status=Approved" class="admin-filter-pill <?= $statusFilter === 'Approved' ? 'active' : ''; ?>">Approved (<?= $metricApprovedProviders; ?>)</a>
-                        <a href="index.php?tab=providers&status=Rejected" class="admin-filter-pill <?= $statusFilter === 'Rejected' ? 'active' : ''; ?>">Rejected</a>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-card-body" style="padding: 0;">
-                        <div class="admin-table-responsive">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>Mitra Name</th>
-                                        <th>Contact</th>
-                                        <th>Skill &amp; Experience</th>
-                                        <th>City &amp; Locality</th>
-                                        <th>Status</th>
-                                        <th>Registered Date</th>
-                                        <th>Review Decision</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if (empty($providers)): ?>
-                                        <tr>
-                                            <td colspan="7" style="text-align: center; padding: 3rem; color: var(--admin-text-muted);">
-                                                No service providers found matching the selected filter.
-                                            </td>
-                                        </tr>
-                                    <?php else: ?>
-                                        <?php foreach ($providers as $prov): ?>
-                                            <tr>
-                                                <td>
-                                                    <div style="font-weight: 700; color: var(--admin-navy);"><?= htmlspecialchars($prov['full_name']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);">ID: #<?= (int)$prov['id']; ?></div>
-                                                </td>
-                                                <td>
-                                                    <div><?= htmlspecialchars($prov['mobile']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($prov['email']); ?></div>
-                                                </td>
-                                                <td>
-                                                    <div style="font-weight: 600;"><?= htmlspecialchars($prov['primary_skill']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($prov['experience_years']); ?> experience</div>
-                                                </td>
-                                                <td>
-                                                    <div><?= htmlspecialchars($prov['city']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($prov['service_area'] ?? 'City-wide'); ?></div>
-                                                </td>
-                                                <td>
-                                                    <?php
-                                                    $vSt = $prov['verification_status'];
-                                                    $vBadge = match($vSt) {
-                                                        'Approved' => 'badge-approved',
-                                                        'Pending' => 'badge-pending',
-                                                        'Rejected' => 'badge-rejected',
-                                                        default => 'badge-pending'
-                                                    };
-                                                    ?>
-                                                    <span class="badge-status <?= $vBadge; ?>"><?= htmlspecialchars($vSt); ?></span>
-                                                    <?php if ($vSt === 'Rejected' && !empty($prov['rejection_reason'])): ?>
-                                                        <div style="font-size: 0.75rem; color: #DC2626; margin-top: 0.25rem; max-width: 220px;" title="<?= htmlspecialchars($prov['rejection_reason']); ?>">
-                                                            <em>Reason: <?= htmlspecialchars($prov['rejection_reason']); ?></em>
-                                                        </div>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td><?= date('d M Y', strtotime($prov['created_at'])); ?></td>
-                                                <td>
-                                                    <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-                                                        <?php if ($vSt !== 'Approved'): ?>
-                                                            <form method="POST" onsubmit="return confirm('Approve verification for <?= htmlspecialchars(addslashes($prov['full_name'])); ?>?');">
-                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                                <input type="hidden" name="action" value="approve_provider">
-                                                                <input type="hidden" name="provider_id" value="<?= (int)$prov['id']; ?>">
-                                                                <button type="submit" class="btn-admin btn-admin-success" title="Approve">
-                                                                    <i data-lucide="check" style="width: 14px; height: 14px;"></i>
-                                                                    <span>Approve</span>
-                                                                </button>
-                                                            </form>
-                                                        <?php endif; ?>
-
-                                                        <?php if ($vSt !== 'Rejected'): ?>
-                                                            <form method="POST" onsubmit="var reason = prompt('Enter rejection reason for <?= htmlspecialchars(addslashes($prov['full_name'])); ?>:'); if (!reason || !reason.trim()) { alert('Rejection reason required.'); return false; } document.getElementById('prov_rej_<?= $prov['id']; ?>').value = reason; return true;">
-                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                                <input type="hidden" name="action" value="reject_provider">
-                                                                <input type="hidden" name="provider_id" value="<?= (int)$prov['id']; ?>">
-                                                                <input type="hidden" name="rejection_reason" id="prov_rej_<?= $prov['id']; ?>" value="">
-                                                                <button type="submit" class="btn-admin btn-admin-danger" title="Reject">
-                                                                    <i data-lucide="x" style="width: 14px; height: 14px;"></i>
-                                                                    <span>Reject</span>
-                                                                </button>
-                                                            </form>
-                                                        <?php endif; ?>
-
-                                                        <?php if ($vSt !== 'Pending'): ?>
-                                                            <form method="POST" onsubmit="return confirm('Reset verification status to Pending?');">
-                                                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                                <input type="hidden" name="action" value="reset_provider_pending">
-                                                                <input type="hidden" name="provider_id" value="<?= (int)$prov['id']; ?>">
-                                                                <button type="submit" class="btn-admin btn-admin-outline" title="Reset to Pending">
-                                                                    <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
-                                                                </button>
-                                                            </form>
-                                                        <?php endif; ?>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-            <!-- =============================================================
-                 TAB 3: BOOKINGS MANAGEMENT
-                 ============================================================= -->
-            <?php elseif ($activeTab === 'bookings'): ?>
-                <?php
-                $statusFilter = trim($_GET['status'] ?? 'All');
-                $sql = "SELECT * FROM `bookings`";
-                $params = [];
-                if (in_array($statusFilter, ['Confirmed', 'In Progress', 'Completed', 'Cancelled'], true)) {
-                    $sql .= " WHERE `status` = :status";
-                    $params[':status'] = $statusFilter;
-                }
-                $sql .= " ORDER BY `id` DESC";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-                $bookings = $stmt->fetchAll();
-                ?>
-
-                <div class="admin-page-header">
-                    <div>
-                        <h2 class="admin-page-title">Doorstep Bookings &amp; Service Pipeline</h2>
-                        <p class="admin-page-desc">Track real-time orders, manage dispatch statuses, and oversee fulfillment.</p>
-                    </div>
-                    <div class="admin-filter-bar">
-                        <a href="index.php?tab=bookings&status=All" class="admin-filter-pill <?= $statusFilter === 'All' ? 'active' : ''; ?>">All (<?= $metricTotalBookings; ?>)</a>
-                        <a href="index.php?tab=bookings&status=Confirmed" class="admin-filter-pill <?= $statusFilter === 'Confirmed' ? 'active' : ''; ?>">Confirmed</a>
-                        <a href="index.php?tab=bookings&status=In Progress" class="admin-filter-pill <?= $statusFilter === 'In Progress' ? 'active' : ''; ?>">In Progress</a>
-                        <a href="index.php?tab=bookings&status=Completed" class="admin-filter-pill <?= $statusFilter === 'Completed' ? 'active' : ''; ?>">Completed (<?= $metricCompletedBookings; ?>)</a>
-                        <a href="index.php?tab=bookings&status=Cancelled" class="admin-filter-pill <?= $statusFilter === 'Cancelled' ? 'active' : ''; ?>">Cancelled</a>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-card-body" style="padding: 0;">
-                        <div class="admin-table-responsive">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>Ref Code</th>
-                                        <th>Customer Details</th>
-                                        <th>Service &amp; Category</th>
-                                        <th>Address &amp; City</th>
-                                        <th>Scheduled Slot</th>
-                                        <th>Assigned Mitra</th>
-                                        <th>Price</th>
-                                        <th>Status</th>
-                                        <th>Update Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if (empty($bookings)): ?>
-                                        <tr>
-                                            <td colspan="9" style="text-align: center; padding: 3rem; color: var(--admin-text-muted);">
-                                                No bookings found matching the selected filter.
-                                            </td>
-                                        </tr>
-                                    <?php else: ?>
-                                        <?php foreach ($bookings as $b): ?>
-                                            <tr>
-                                                <td><strong style="color: var(--admin-primary);"><?= htmlspecialchars($b['booking_reference']); ?></strong></td>
-                                                <td>
-                                                    <div style="font-weight: 700;"><?= htmlspecialchars($b['customer_name']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($b['phone']); ?></div>
-                                                </td>
-                                                <td>
-                                                    <div style="font-weight: 600;"><?= htmlspecialchars($b['service_category']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($b['sub_service']); ?></div>
-                                                </td>
-                                                <td>
-                                                    <div><?= htmlspecialchars($b['city']); ?></div>
-                                                    <div style="font-size: 0.75rem; color: var(--admin-text-muted); max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="<?= htmlspecialchars($b['address']); ?>">
-                                                        <?= htmlspecialchars($b['address']); ?>
-                                                    </div>
-                                                </td>
-                                                <td>
-                                                    <div><?= htmlspecialchars($b['service_date']); ?></div>
-                                                    <div style="font-size: 0.75rem; color: var(--admin-text-muted);"><?= htmlspecialchars($b['time_slot']); ?></div>
-                                                </td>
-                                                <td>
-                                                    <div><?= htmlspecialchars($b['mitra_name'] ?: 'Unassigned'); ?></div>
-                                                    <?php if (!empty($b['mitra_rating'])): ?>
-                                                        <div style="font-size: 0.75rem; color: #D97706; font-weight: 700;">★ <?= htmlspecialchars($b['mitra_rating']); ?></div>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td><strong>₹<?= number_format((float)$b['estimated_price'], 2); ?></strong></td>
-                                                <td>
-                                                    <?php
-                                                    $st = $b['status'];
-                                                    $bBadge = match($st) {
-                                                        'Confirmed' => 'badge-pending',
-                                                        'In Progress' => 'badge-completed',
-                                                        'Completed' => 'badge-approved',
-                                                        'Cancelled' => 'badge-rejected',
-                                                        default => 'badge-pending'
-                                                    };
-                                                    ?>
-                                                    <span class="badge-status <?= $bBadge; ?>"><?= htmlspecialchars($st); ?></span>
-                                                </td>
-                                                <td>
-                                                    <form method="POST" style="display: flex; gap: 0.35rem; align-items: center;">
-                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                        <input type="hidden" name="action" value="update_booking_status">
-                                                        <input type="hidden" name="booking_id" value="<?= (int)$b['id']; ?>">
-                                                        <select name="status" class="input-control" style="padding: 0.35rem 0.5rem; font-size: 0.8rem; height: auto;">
-                                                            <option value="Confirmed" <?= $st === 'Confirmed' ? 'selected' : ''; ?>>Confirmed</option>
-                                                            <option value="In Progress" <?= $st === 'In Progress' ? 'selected' : ''; ?>>In Progress</option>
-                                                            <option value="Completed" <?= $st === 'Completed' ? 'selected' : ''; ?>>Completed</option>
-                                                            <option value="Cancelled" <?= $st === 'Cancelled' ? 'selected' : ''; ?>>Cancelled</option>
-                                                        </select>
-                                                        <button type="submit" class="btn-admin btn-admin-outline" style="padding: 0.35rem 0.6rem;" title="Save status">
-                                                            <i data-lucide="save" style="width: 14px; height: 14px;"></i>
-                                                        </button>
-                                                    </form>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-            <!-- =============================================================
-                 TAB 4: CUSTOMERS DIRECTORY
-                 ============================================================= -->
-            <?php elseif ($activeTab === 'customers'): ?>
-                <?php
-                $search = trim($_GET['q'] ?? '');
-                $sql = "SELECT * FROM `customers`";
-                $params = [];
-                if (!empty($search)) {
-                    $sql .= " WHERE `full_name` LIKE :q OR `email` LIKE :q OR `mobile` LIKE :q OR `city` LIKE :q";
-                    $params[':q'] = "%{$search}%";
-                }
-                $sql .= " ORDER BY `created_at` DESC";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-                $customers = $stmt->fetchAll();
-                ?>
-
-                <div class="admin-page-header">
-                    <div>
-                        <h2 class="admin-page-title">Customer Accounts Directory</h2>
-                        <p class="admin-page-desc">Search registered homeowner profiles, view verification terms, and manage access.</p>
-                    </div>
-                    <div>
-                        <form method="GET" style="display: flex; gap: 0.5rem;">
-                            <input type="hidden" name="tab" value="customers">
-                            <input type="text" name="q" value="<?= htmlspecialchars($search); ?>" placeholder="Search name, phone, email..." class="input-control" style="width: 240px; padding: 0.45rem 0.85rem; font-size: 0.85rem;">
-                            <button type="submit" class="btn-admin btn-admin-primary">Search</button>
-                            <?php if (!empty($search)): ?>
-                                <a href="index.php?tab=customers" class="btn-admin btn-admin-outline">Clear</a>
-                            <?php endif; ?>
-                        </form>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-card-body" style="padding: 0;">
-                        <div class="admin-table-responsive">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>Customer Name</th>
-                                        <th>Mobile &amp; Email</th>
-                                        <th>Location</th>
-                                        <th>Status</th>
-                                        <th>Terms Accepted</th>
-                                        <th>Joined Date</th>
-                                        <th>Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if (empty($customers)): ?>
-                                        <tr>
-                                            <td colspan="7" style="text-align: center; padding: 3rem; color: var(--admin-text-muted);">
-                                                No customers found matching search query.
-                                            </td>
-                                        </tr>
-                                    <?php else: ?>
-                                        <?php foreach ($customers as $c): ?>
-                                            <tr>
-                                                <td>
-                                                    <div style="font-weight: 700; color: var(--admin-navy);"><?= htmlspecialchars($c['full_name']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);">ID: #<?= (int)$c['id']; ?> &bull; <?= htmlspecialchars($c['gender'] ?? 'Not specified'); ?></div>
-                                                </td>
-                                                <td>
-                                                    <div><?= htmlspecialchars($c['mobile']); ?></div>
-                                                    <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($c['email']); ?></div>
-                                                </td>
-                                                <td>
-                                                    <div><?= htmlspecialchars($c['city'] ?: 'City not set'); ?></div>
-                                                    <div style="font-size: 0.75rem; color: var(--admin-text-muted);"><?= htmlspecialchars($c['address_line'] ?? ''); ?></div>
-                                                </td>
-                                                <td>
-                                                    <?php
-                                                    $cStatus = $c['status'] ?? 'Active';
-                                                    $cBadge = ($cStatus === 'Active') ? 'badge-approved' : 'badge-rejected';
-                                                    ?>
-                                                    <span class="badge-status <?= $cBadge; ?>"><?= htmlspecialchars($cStatus); ?></span>
-                                                </td>
-                                                <td>
-                                                    <?php if (!empty($c['terms_accepted'])): ?>
-                                                        <span style="color: #059669; font-weight: 700; font-size: 0.8rem;">✓ Verified</span>
-                                                        <div style="font-size: 0.7rem; color: var(--admin-text-muted);"><?= htmlspecialchars($c['terms_accepted_at'] ?? ''); ?></div>
-                                                    <?php else: ?>
-                                                        <span style="color: #94A3B8; font-size: 0.8rem;">Pending</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td><?= date('d M Y', strtotime($c['created_at'])); ?></td>
-                                                <td>
-                                                    <form method="POST" onsubmit="return confirm('Toggle status for <?= htmlspecialchars(addslashes($c['full_name'])); ?>?');">
-                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                        <input type="hidden" name="action" value="update_customer_status">
-                                                        <input type="hidden" name="customer_id" value="<?= (int)$c['id']; ?>">
-                                                        <input type="hidden" name="status" value="<?= $cStatus === 'Active' ? 'Suspended' : 'Active'; ?>">
-                                                        <button type="submit" class="btn-admin <?= $cStatus === 'Active' ? 'btn-admin-danger' : 'btn-admin-success'; ?>" style="font-size: 0.775rem; padding: 0.35rem 0.65rem;">
-                                                            <?= $cStatus === 'Active' ? 'Suspend' : 'Reactivate'; ?>
-                                                        </button>
-                                                    </form>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-            <!-- =============================================================
-                 TAB 5: OPERATIONAL REPORTS
-                 ============================================================= -->
-            <?php elseif ($activeTab === 'reports'): ?>
-                <div class="admin-page-header">
-                    <div>
-                        <h2 class="admin-page-title">Operational Reports &amp; Aggregates</h2>
-                        <p class="admin-page-desc">Comprehensive database performance figures, category distribution, and geographic coverage.</p>
-                    </div>
-                </div>
-
-                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1.5rem; margin-bottom: 2rem;">
-                    <!-- Breakdown by Category -->
-                    <div class="admin-card">
+                    <!-- Create Administrator Form Section -->
+                    <div class="admin-card" id="createAdminSection">
                         <div class="admin-card-head">
-                            <h3 class="admin-card-title">Bookings by Service Category</h3>
+                            <h3 class="admin-card-title">
+                                <i data-lucide="user-plus" style="width: 17px; height: 17px; color: var(--brand-primary);"></i>
+                                <span>Create New Administrator Account</span>
+                            </h3>
                         </div>
-                        <div class="admin-card-body" style="padding: 0;">
-                            <?php
-                            $catStmt = $pdo->query("
-                                SELECT `service_category`, COUNT(*) as `total`, SUM(`estimated_price`) as `revenue`
-                                FROM `bookings`
-                                GROUP BY `service_category`
-                                ORDER BY `total` DESC
-                            ");
-                            $catStats = $catStmt->fetchAll();
-                            ?>
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>Trade Category</th>
-                                        <th>Bookings</th>
-                                        <th>Gross Value</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($catStats as $cs): ?>
-                                        <tr>
-                                            <td><strong><?= htmlspecialchars($cs['service_category']); ?></strong></td>
-                                            <td><?= number_format($cs['total']); ?></td>
-                                            <td>₹<?= number_format((float)$cs['revenue'], 2); ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+                        <div class="admin-card-body">
+                            <form method="POST" style="max-width: 680px;">
+                                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
+                                <input type="hidden" name="action" value="create_admin">
 
-                    <!-- Breakdown by City -->
-                    <div class="admin-card">
-                        <div class="admin-card-head">
-                            <h3 class="admin-card-title">Approved Technicians by City</h3>
-                        </div>
-                        <div class="admin-card-body" style="padding: 0;">
-                            <?php
-                            $cityStmt = $pdo->query("
-                                SELECT `city`, COUNT(*) as `provider_count`
-                                FROM `service_providers`
-                                WHERE `verification_status` = 'Approved'
-                                GROUP BY `city`
-                                ORDER BY `provider_count` DESC
-                            ");
-                            $cityStats = $cityStmt->fetchAll();
-                            ?>
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>Operational City</th>
-                                        <th>Verified Mitras</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if (empty($cityStats)): ?>
-                                        <tr><td colspan="3" style="text-align: center; color: var(--admin-text-muted);">No approved providers in records yet.</td></tr>
-                                    <?php else: ?>
-                                        <?php foreach ($cityStats as $cit): ?>
-                                            <tr>
-                                                <td><strong><?= htmlspecialchars($cit['city']); ?></strong></td>
-                                                <td><?= number_format($cit['provider_count']); ?> Active Mitras</td>
-                                                <td><span class="badge-status badge-approved">Live Dispatch</span></td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-            <!-- =============================================================
-                 TAB 6: ADMINISTRATOR MANAGEMENT (SUPER ADMIN ONLY)
-                 ============================================================= -->
-            <?php elseif ($activeTab === 'admins' && $isSuperAdmin): ?>
-                <div class="admin-page-header">
-                    <div>
-                        <h2 class="admin-page-title">Administrator Account Governance</h2>
-                        <p class="admin-page-desc">Create administrative accounts, assign roles, activate/deactivate personnel, and execute password resets.</p>
-                    </div>
-                    <div>
-                        <button type="button" class="btn-admin btn-admin-primary" onclick="document.getElementById('createAdminSection').scrollIntoView({behavior: 'smooth'});">
-                            <i data-lucide="user-plus" style="width: 14px; height: 14px;"></i>
-                            <span>Add New Administrator</span>
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Admin Accounts Table -->
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <h3 class="admin-card-title">
-                            <i data-lucide="shield-check" style="width: 18px; height: 18px; color: #7C3AED;"></i>
-                            <span>Configured Administrative Users</span>
-                        </h3>
-                    </div>
-                    <div class="admin-card-body" style="padding: 0;">
-                        <?php
-                        $adminsStmt = $pdo->query("SELECT * FROM `admins` ORDER BY `id` ASC");
-                        $adminAccounts = $adminsStmt->fetchAll();
-                        ?>
-                        <div class="admin-table-responsive">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>Admin ID (Username)</th>
-                                        <th>Full Name &amp; Email</th>
-                                        <th>Current Role</th>
-                                        <th>Status</th>
-                                        <th>Last Login</th>
-                                        <th>Role Management</th>
-                                        <th>Account Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($adminAccounts as $adm): ?>
-                                        <tr>
-                                            <td>
-                                                <strong style="color: var(--admin-navy); font-size: 0.95rem;"><?= htmlspecialchars($adm['username']); ?></strong>
-                                                <div style="font-size: 0.725rem; color: var(--admin-text-muted);">Admin ID: #<?= (int)$adm['id']; ?></div>
-                                            </td>
-                                            <td>
-                                                <div><?= htmlspecialchars($adm['full_name'] ?: 'N/A'); ?></div>
-                                                <div style="font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($adm['email'] ?: 'No email configured'); ?></div>
-                                            </td>
-                                            <td>
-                                                <?php if ($adm['role'] === 'super_admin'): ?>
-                                                    <span class="admin-role-badge role-super-admin" style="font-size: 0.725rem; padding: 0.2rem 0.6rem;">Super Admin</span>
-                                                <?php else: ?>
-                                                    <span class="admin-role-badge role-admin" style="font-size: 0.725rem; padding: 0.2rem 0.6rem;">Admin</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <?php if ((int)$adm['is_active'] === 1): ?>
-                                                    <span class="badge-status badge-active">Active</span>
-                                                <?php else: ?>
-                                                    <span class="badge-status badge-deactivated">Deactivated</span>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td>
-                                                <?= !empty($adm['last_login_at']) ? date('d M Y, h:i A', strtotime($adm['last_login_at'])) : '<span style="color: #94A3B8;">Never</span>'; ?>
-                                            </td>
-                                            <td>
-                                                <!-- Change Role Form (Super Admin only) -->
-                                                <form method="POST" style="display: flex; gap: 0.35rem;" onsubmit="return confirm('Change role for <?= htmlspecialchars(addslashes($adm['username'])); ?>?');">
-                                                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                    <input type="hidden" name="action" value="update_admin_role">
-                                                    <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
-                                                    <select name="new_role" class="input-control" style="padding: 0.35rem 0.5rem; font-size: 0.8rem; height: auto;">
-                                                        <option value="admin" <?= $adm['role'] === 'admin' ? 'selected' : ''; ?>>admin</option>
-                                                        <option value="super_admin" <?= $adm['role'] === 'super_admin' ? 'selected' : ''; ?>>super_admin</option>
-                                                    </select>
-                                                    <button type="submit" class="btn-admin btn-admin-outline" style="padding: 0.35rem 0.6rem;" title="Update role">Save</button>
-                                                </form>
-                                            </td>
-                                            <td>
-                                                <div style="display: flex; gap: 0.4rem; flex-wrap: wrap;">
-                                                    <!-- Toggle Active/Deactivated Status -->
-                                                    <form method="POST" onsubmit="return confirm('Are you sure you want to <?= (int)$adm['is_active'] === 1 ? 'deactivate' : 'activate'; ?> account <?= htmlspecialchars(addslashes($adm['username'])); ?>?');">
-                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                        <input type="hidden" name="action" value="toggle_admin_status">
-                                                        <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
-                                                        <input type="hidden" name="new_status" value="<?= (int)$adm['is_active'] === 1 ? '0' : '1'; ?>">
-                                                        <button type="submit" class="btn-admin <?= (int)$adm['is_active'] === 1 ? 'btn-admin-danger' : 'btn-admin-success'; ?>" style="font-size: 0.775rem;">
-                                                            <?= (int)$adm['is_active'] === 1 ? 'Deactivate' : 'Activate'; ?>
-                                                        </button>
-                                                    </form>
-
-                                                    <!-- Reset Password Prompt -->
-                                                    <form method="POST" onsubmit="var p = prompt('Enter a new password for <?= htmlspecialchars(addslashes($adm['username'])); ?> (minimum 8 characters):'); if (!p || p.length < 8) { alert('Password must be at least 8 characters.'); return false; } document.getElementById('pwd_reset_<?= $adm['id']; ?>').value = p; return true;">
-                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                        <input type="hidden" name="action" value="reset_admin_password">
-                                                        <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
-                                                        <input type="hidden" name="new_password" id="pwd_reset_<?= $adm['id']; ?>" value="">
-                                                        <button type="submit" class="btn-admin btn-admin-outline" style="font-size: 0.775rem;" title="Reset password">
-                                                            <i data-lucide="key" style="width: 12px; height: 12px;"></i>
-                                                            <span>Reset</span>
-                                                        </button>
-                                                    </form>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Create Administrator Form Section -->
-                <div class="admin-card" id="createAdminSection">
-                    <div class="admin-card-head">
-                        <h3 class="admin-card-title">
-                            <i data-lucide="user-plus" style="width: 18px; height: 18px; color: var(--admin-primary);"></i>
-                            <span>Create New Administrator Account</span>
-                        </h3>
-                    </div>
-                    <div class="admin-card-body">
-                        <form method="POST" style="max-width: 640px;">
-                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                            <input type="hidden" name="action" value="create_admin">
-
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                                <div class="form-group" style="margin: 0;">
-                                    <label class="form-label">Admin ID (Username) *</label>
-                                    <input type="text" name="new_username" class="input-control" placeholder="e.g. rahul_admin" required autocomplete="off">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                    <div class="admin-form-group" style="margin: 0;">
+                                        <label class="admin-form-label">Admin ID (Username) *</label>
+                                        <input type="text" name="new_username" class="admin-form-input" placeholder="e.g. rahul_admin" required autocomplete="off">
+                                    </div>
+                                    <div class="admin-form-group" style="margin: 0;">
+                                        <label class="admin-form-label">Full Name *</label>
+                                        <input type="text" name="new_full_name" class="admin-form-input" placeholder="e.g. Rahul Verma" required>
+                                    </div>
                                 </div>
-                                <div class="form-group" style="margin: 0;">
-                                    <label class="form-label">Full Name *</label>
-                                    <input type="text" name="new_full_name" class="input-control" placeholder="e.g. Rahul Verma" required>
+
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                                    <div class="admin-form-group" style="margin: 0;">
+                                        <label class="admin-form-label">Email Address *</label>
+                                        <input type="email" name="new_email" class="admin-form-input" placeholder="e.g. rahul@kaammitra.in" required>
+                                    </div>
+                                    <div class="admin-form-group" style="margin: 0;">
+                                        <label class="admin-form-label">Initial Password (Min 8 Chars) *</label>
+                                        <input type="password" name="new_password" class="admin-form-input" placeholder="Secure temporary password" required minlength="8">
+                                    </div>
+                                </div>
+
+                                <div class="admin-form-group" style="margin-bottom: 1.5rem;">
+                                    <label class="admin-form-label">Assigned Administrative Role *</label>
+                                    <select name="new_role" class="admin-form-select" required>
+                                        <option value="admin" selected>admin (Restricted Operational Clearance - Default)</option>
+                                        <option value="super_admin">super_admin (Full Governance &amp; Account Control)</option>
+                                    </select>
+                                    <span style="font-size: 0.775rem; color: var(--admin-text-muted); display: block; margin-top: 0.35rem;">
+                                        Standard 'admin' accounts cannot manage other administrators, view audit logs, or access security settings.
+                                    </span>
+                                </div>
+
+                                <button type="submit" class="toolbar-btn-primary" style="padding: 0.65rem 1.5rem;">
+                                    <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
+                                    <span>Create Administrator Account</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+
+                <!-- =============================================================
+                     TAB 7: IMMUTABLE SECURITY AUDIT LOGS (SUPER ADMIN ONLY)
+                     ============================================================= -->
+                <?php elseif ($activeTab === 'audit' && $isSuperAdmin): ?>
+                    <?php
+                    $filterAction = trim($_GET['action_filter'] ?? '');
+                    $sql = "SELECT * FROM `admin_audit_logs`";
+                    $params = [];
+                    if (!empty($filterAction)) {
+                        $sql .= " WHERE `action` LIKE :act";
+                        $params[':act'] = "%{$filterAction}%";
+                    }
+                    $sql .= " ORDER BY `id` DESC LIMIT 100";
+                    $stmt = $pdo->prepare($sql);
+                    $stmt->execute($params);
+                    $auditLogs = $stmt->fetchAll();
+                    ?>
+
+                    <!-- Section: Horizontal Summary Stat Cards (Row of 6) -->
+                    <div class="admin-summary-grid">
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Total Events Logged</span>
+                                <div class="summary-card-icon icon-blue">
+                                    <i data-lucide="scroll-text" style="width: 17px; height: 17px;"></i>
                                 </div>
                             </div>
+                            <div class="summary-card-val"><?= (int)$pdo->query("SELECT COUNT(*) FROM `admin_audit_logs`")->fetchColumn(); ?></div>
+                        </div>
 
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                                <div class="form-group" style="margin: 0;">
-                                    <label class="form-label">Email Address *</label>
-                                    <input type="email" name="new_email" class="input-control" placeholder="e.g. rahul@kaammitra.in" required>
-                                </div>
-                                <div class="form-group" style="margin: 0;">
-                                    <label class="form-label">Initial Password (Min 8 Chars) *</label>
-                                    <input type="password" name="new_password" class="input-control" placeholder="Secure temporary password" required minlength="8">
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Admin Sign-Ins</span>
+                                <div class="summary-card-icon icon-green">
+                                    <i data-lucide="log-in" style="width: 17px; height: 17px;"></i>
                                 </div>
                             </div>
+                            <div class="summary-card-val"><?= (int)$pdo->query("SELECT COUNT(*) FROM `admin_audit_logs` WHERE `action` LIKE '%LOGIN%'")->fetchColumn(); ?></div>
+                        </div>
 
-                            <div class="form-group" style="margin-bottom: 1.5rem;">
-                                <label class="form-label">Assigned Administrative Role *</label>
-                                <select name="new_role" class="input-control" required>
-                                    <option value="admin" selected>admin (Restricted Operational Clearance - Default)</option>
-                                    <option value="super_admin">super_admin (Full Governance &amp; Account Control)</option>
-                                </select>
-                                <span style="font-size: 0.775rem; color: var(--admin-text-muted); display: block; margin-top: 0.35rem;">
-                                    Standard 'admin' accounts cannot manage other administrators, view audit logs, or access security settings.
-                                </span>
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Credential Grants</span>
+                                <div class="summary-card-icon icon-amber">
+                                    <i data-lucide="award" style="width: 17px; height: 17px;"></i>
+                                </div>
                             </div>
+                            <div class="summary-card-val"><?= (int)$pdo->query("SELECT COUNT(*) FROM `admin_audit_logs` WHERE `action` LIKE '%APPROVE%'")->fetchColumn(); ?></div>
+                        </div>
 
-                            <button type="submit" class="btn-admin btn-admin-primary" style="padding: 0.65rem 1.5rem;">
-                                <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
-                                <span>Create Administrator Account</span>
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Security Blocks</span>
+                                <div class="summary-card-icon icon-red">
+                                    <i data-lucide="shield-alert" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= (int)$pdo->query("SELECT COUNT(*) FROM `admin_audit_logs` WHERE `action` LIKE '%RESTRICTED%' OR `action` LIKE '%UNAUTHORIZED%'")->fetchColumn(); ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Audit Retention</span>
+                                <div class="summary-card-icon icon-purple">
+                                    <i data-lucide="database" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val">Immutable</div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">Cryptographic Integrity</span>
+                                <div class="summary-card-icon icon-teal">
+                                    <i data-lucide="check" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val">100%</div>
+                        </div>
+                    </div>
+
+                    <!-- Single Unified Toolbar -->
+                    <div class="admin-table-toolbar">
+                        <div class="toolbar-left">
+                            <form method="GET" style="display: flex; gap: 0.5rem; align-items: center;">
+                                <input type="hidden" name="tab" value="audit">
+                                <div class="toolbar-search-wrap">
+                                    <i data-lucide="search" style="width: 15px; height: 15px; color: var(--admin-text-muted);"></i>
+                                    <input type="text" name="action_filter" value="<?= htmlspecialchars($filterAction); ?>" placeholder="Filter by action code...">
+                                </div>
+                                <button type="submit" class="toolbar-btn-primary" style="padding: 0.42rem 0.95rem;">Filter</button>
+                                <?php if (!empty($filterAction)): ?>
+                                    <a href="index.php?tab=audit" class="toolbar-btn-outline" style="padding: 0.42rem 0.85rem;">Clear</a>
+                                <?php endif; ?>
+                            </form>
+                        </div>
+                        <div class="toolbar-right">
+                            <button type="button" class="toolbar-btn-outline" onclick="window.print();" title="Export Security Trail">
+                                <i data-lucide="download" style="width: 13px; height: 13px;"></i>
+                                <span>Export CSV</span>
                             </button>
-                        </form>
-                    </div>
-                </div>
-
-            <!-- =============================================================
-                 TAB 7: IMMUTABLE SECURITY AUDIT LOGS (SUPER ADMIN ONLY)
-                 ============================================================= -->
-            <?php elseif ($activeTab === 'audit' && $isSuperAdmin): ?>
-                <?php
-                $filterAction = trim($_GET['action_filter'] ?? '');
-                $sql = "SELECT * FROM `admin_audit_logs`";
-                $params = [];
-                if (!empty($filterAction)) {
-                    $sql .= " WHERE `action` LIKE :act";
-                    $params[':act'] = "%{$filterAction}%";
-                }
-                $sql .= " ORDER BY `id` DESC LIMIT 100";
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-                $auditLogs = $stmt->fetchAll();
-                ?>
-
-                <div class="admin-page-header">
-                    <div>
-                        <h2 class="admin-page-title">Platform Security Audit Log</h2>
-                        <p class="admin-page-desc">Tamper-evident chronological audit trail of all sign-ins, provider approvals, role modifications, and administrative decisions.</p>
-                    </div>
-                    <div>
-                        <form method="GET" style="display: flex; gap: 0.5rem;">
-                            <input type="hidden" name="tab" value="audit">
-                            <input type="text" name="action_filter" value="<?= htmlspecialchars($filterAction); ?>" placeholder="Filter by action..." class="input-control" style="width: 220px; padding: 0.45rem 0.85rem; font-size: 0.85rem;">
-                            <button type="submit" class="btn-admin btn-admin-primary">Filter</button>
-                            <?php if (!empty($filterAction)): ?>
-                                <a href="index.php?tab=audit" class="btn-admin btn-admin-outline">Clear</a>
-                            <?php endif; ?>
-                        </form>
-                    </div>
-                </div>
-
-                <div class="admin-card">
-                    <div class="admin-card-head">
-                        <h3 class="admin-card-title">
-                            <i data-lucide="scroll-text" style="width: 18px; height: 18px; color: #7C3AED;"></i>
-                            <span>Immutable Event Trail (Last 100 Events)</span>
-                        </h3>
-                        <span style="font-size: 0.8rem; color: var(--admin-text-muted);">Audit records cannot be modified or deleted.</span>
-                    </div>
-                    <div class="admin-card-body" style="padding: 0;">
-                        <div class="admin-table-responsive">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>Log ID</th>
-                                        <th>Timestamp</th>
-                                        <th>Acting Admin</th>
-                                        <th>Action Executed</th>
-                                        <th>Target</th>
-                                        <th>Event Details</th>
-                                        <th>IP Address</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if (empty($auditLogs)): ?>
-                                        <tr>
-                                            <td colspan="7" style="text-align: center; padding: 3rem; color: var(--admin-text-muted);">
-                                                No audit records recorded yet.
-                                            </td>
-                                        </tr>
-                                    <?php else: ?>
-                                        <?php foreach ($auditLogs as $log): ?>
-                                            <tr>
-                                                <td><span style="font-family: monospace; color: var(--admin-text-muted);">#<?= (int)$log['id']; ?></span></td>
-                                                <td style="white-space: nowrap; font-size: 0.8rem;"><?= date('d M Y, H:i:s', strtotime($log['created_at'])); ?></td>
-                                                <td>
-                                                    <strong><?= htmlspecialchars($log['admin_username'] ?: 'System / Guest'); ?></strong>
-                                                    <?php if (!empty($log['admin_id'])): ?>
-                                                        <div style="font-size: 0.725rem; color: var(--admin-text-muted);">ID: <?= (int)$log['admin_id']; ?></div>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <?php
-                                                    $act = $log['action'];
-                                                    $actColor = '#2563EB';
-                                                    if (str_contains($act, 'FAILED') || str_contains($act, 'BLOCKED') || str_contains($act, 'UNAUTHORIZED') || str_contains($act, 'REJECTED')) {
-                                                        $actColor = '#DC2626';
-                                                    } elseif (str_contains($act, 'SUCCESS') || str_contains($act, 'APPROVED') || str_contains($act, 'ACTIVATED')) {
-                                                        $actColor = '#059669';
-                                                    } elseif (str_contains($act, 'ROLE') || str_contains($act, 'ADMIN')) {
-                                                        $actColor = '#7C3AED';
-                                                    }
-                                                    ?>
-                                                    <span style="font-family: monospace; font-size: 0.8rem; font-weight: 700; color: <?= $actColor; ?>;">
-                                                        <?= htmlspecialchars($act); ?>
-                                                    </span>
-                                                </td>
-                                                <td>
-                                                    <?php if (!empty($log['target_type'])): ?>
-                                                        <span class="badge-status" style="background: #F1F5F9; color: #475569; font-size: 0.75rem;">
-                                                            <?= htmlspecialchars($log['target_type']); ?> <?= !empty($log['target_id']) ? '#' . htmlspecialchars($log['target_id']) : ''; ?>
-                                                        </span>
-                                                    <?php else: ?>
-                                                        <span style="color: #94A3B8;">-</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td style="max-width: 320px; font-size: 0.825rem; color: #334155;">
-                                                    <?= htmlspecialchars($log['details'] ?? ''); ?>
-                                                </td>
-                                                <td>
-                                                    <span style="font-family: monospace; font-size: 0.775rem; color: var(--admin-text-muted);"><?= htmlspecialchars($log['ip_address'] ?? '127.0.0.1'); ?></span>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
                         </div>
                     </div>
-                </div>
 
-            <?php endif; ?>
+                    <!-- Modern Card Container for Audit Logs -->
+                    <div class="admin-card">
+                        <div class="admin-card-head">
+                            <h3 class="admin-card-title">
+                                <i data-lucide="scroll-text" style="width: 17px; height: 17px; color: var(--status-purple);"></i>
+                                <span>Immutable Event Trail (Last 100 Recorded Events)</span>
+                            </h3>
+                            <span style="font-size: 0.775rem; color: var(--admin-text-muted); font-weight: 600;">Security records cannot be edited or purged</span>
+                        </div>
+                        <div class="admin-card-body p-0">
+                            <div class="admin-table-responsive">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Log ID</th>
+                                            <th>Timestamp</th>
+                                            <th>Acting Admin</th>
+                                            <th>Action Executed</th>
+                                            <th>Target Type</th>
+                                            <th>Event Details</th>
+                                            <th>IP Address</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php if (empty($auditLogs)): ?>
+                                            <tr>
+                                                <td colspan="7" style="text-align: center; padding: 3rem; color: var(--admin-text-muted);">
+                                                    No audit records recorded yet.
+                                                </td>
+                                            </tr>
+                                        <?php else: ?>
+                                            <?php foreach ($auditLogs as $log): ?>
+                                                <tr>
+                                                    <td><span style="font-family: monospace; color: var(--admin-text-muted); font-weight: 700;">#<?= (int)$log['id']; ?></span></td>
+                                                    <td style="white-space: nowrap; font-size: 0.785rem;"><?= date('d M Y, H:i:s', strtotime($log['created_at'])); ?></td>
+                                                    <td><strong><?= htmlspecialchars($log['admin_username'] ?: 'System / Guest'); ?></strong></td>
+                                                    <td>
+                                                        <span class="status-pill" style="background: #F1F5F9; color: var(--admin-text-main); border: 1px solid var(--admin-border); font-size: 0.685rem;">
+                                                            <?= htmlspecialchars($log['action']); ?>
+                                                        </span>
+                                                    </td>
+                                                    <td><?= htmlspecialchars($log['target_type'] ?: 'N/A'); ?></td>
+                                                    <td>
+                                                        <div style="font-size: 0.785rem; max-width: 320px;"><?= htmlspecialchars($log['details'] ?: 'No details recorded'); ?></div>
+                                                    </td>
+                                                    <td><span style="font-family: monospace; font-size: 0.785rem;"><?= htmlspecialchars($log['ip_address']); ?></span></td>
+                                                </tr>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
 
-        </main>
-    </div>
+                <?php endif; ?>
 
+            </div><!-- /.admin-content-body -->
+
+        </main><!-- /.admin-main-content -->
+
+    </div><!-- /.admin-app -->
+
+    <!-- =============================================================
+         INTERACTIVE BEHAVIOR & LOGIC
+         ============================================================= -->
     <script>
+        // Global Rejection Prompt Handler
+        function handleRejectPrompt(form, name) {
+            const reason = prompt('Please enter rejection reason for ' + name + ':');
+            if (!reason || !reason.trim()) {
+                alert('Rejection reason is required.');
+                return false;
+            }
+            const reasonInput = form.querySelector('input[name="rejection_reason"]');
+            if (reasonInput) reasonInput.value = reason.trim();
+            return true;
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
+            document.documentElement.classList.remove('preload-sidebar-collapsed');
+
+            const app = document.getElementById('adminApp');
+            const sidebar = document.getElementById('adminSidebar');
+            const collapseBtn = document.getElementById('sidebarCollapseBtn');
+            const mobileToggleBtn = document.getElementById('adminHeaderToggleBtn');
+            const backdrop = document.getElementById('adminSidebarBackdrop');
+
+            const isDesktop = () => window.innerWidth > 900;
+
+            // Desktop Collapse/Expand Sidebar
+            function setCollapsed(collapsed) {
+                if (!app) return;
+                if (collapsed) {
+                    app.classList.add('sidebar-collapsed');
+                    localStorage.setItem('admin_sidebar_collapsed', 'true');
+                } else {
+                    app.classList.remove('sidebar-collapsed');
+                    localStorage.setItem('admin_sidebar_collapsed', 'false');
+                }
+            }
+
+            // Restore saved preference on load
+            const savedState = localStorage.getItem('admin_sidebar_collapsed') === 'true';
+            if (isDesktop() && savedState) {
+                setCollapsed(true);
+            }
+
+            if (collapseBtn) {
+                collapseBtn.addEventListener('click', () => {
+                    const currentlyCollapsed = app.classList.contains('sidebar-collapsed');
+                    setCollapsed(!currentlyCollapsed);
+                });
+            }
+
+            const brandGroup = document.querySelector('.sidebar-brand-group');
+            if (brandGroup) {
+                brandGroup.addEventListener('click', (e) => {
+                    if (app.classList.contains('sidebar-collapsed')) {
+                        e.preventDefault();
+                        setCollapsed(false);
+                    }
+                });
+            }
+
+            // Mobile Off-Canvas Drawer Toggle
+            function openMobileSidebar() {
+                if (sidebar) sidebar.classList.add('mobile-open');
+                if (backdrop) backdrop.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+
+            function closeMobileSidebar() {
+                if (sidebar) sidebar.classList.remove('mobile-open');
+                if (backdrop) backdrop.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+
+            if (mobileToggleBtn) {
+                mobileToggleBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (isDesktop()) {
+                        const currentlyCollapsed = app.classList.contains('sidebar-collapsed');
+                        setCollapsed(!currentlyCollapsed);
+                    } else {
+                        if (sidebar && sidebar.classList.contains('mobile-open')) {
+                            closeMobileSidebar();
+                        } else {
+                            openMobileSidebar();
+                        }
+                    }
+                });
+            }
+
+            if (backdrop) {
+                backdrop.addEventListener('click', closeMobileSidebar);
+            }
+
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape' && !isDesktop()) {
+                    closeMobileSidebar();
+                }
+            });
+
+            window.addEventListener('resize', () => {
+                if (isDesktop()) {
+                    closeMobileSidebar();
+                    const state = localStorage.getItem('admin_sidebar_collapsed') === 'true';
+                    setCollapsed(state);
+                } else {
+                    app.classList.remove('sidebar-collapsed');
+                }
+            });
+
+            // Live Header Clock (Updates every second)
+            function updateHeaderClock() {
+                const clockEl = document.getElementById('headerLiveClockTime');
+                if (!clockEl) return;
+                const now = new Date();
+                let hours = now.getHours();
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12;
+                hours = hours ? hours : 12;
+                clockEl.textContent = `${hours}:${minutes}:${seconds} ${ampm}`;
+            }
+            setInterval(updateHeaderClock, 1000);
+            updateHeaderClock();
+
+            // Header Refresh Action with Animated Spin Feedback
+            window.triggerHeaderRefresh = function(btn) {
+                if (!btn) return;
+                btn.classList.add('is-refreshing');
+                const textSpan = btn.querySelector('span');
+                if (textSpan) textSpan.textContent = 'Syncing...';
+                setTimeout(() => {
+                    window.location.reload();
+                }, 450);
+            };
+
+            // Instant Client-Side Search for Service Mitras
+            const provSearch = document.getElementById('providerSearchInput');
+            if (provSearch) {
+                provSearch.addEventListener('input', (e) => {
+                    const q = e.target.value.toLowerCase().trim();
+                    const rows = document.querySelectorAll('.provider-row');
+                    rows.forEach(r => {
+                        const text = r.getAttribute('data-search') || '';
+                        r.style.display = (!q || text.includes(q)) ? '' : 'none';
+                    });
+                });
+            }
+
+            // Instant Client-Side Search for Bookings Tab
+            const bookSearch = document.getElementById('bookingsSearchInput');
+            if (bookSearch) {
+                bookSearch.addEventListener('input', (e) => {
+                    const q = e.target.value.toLowerCase().trim();
+                    const rows = document.querySelectorAll('.booking-data-row');
+                    rows.forEach(r => {
+                        const text = r.getAttribute('data-search') || '';
+                        r.style.display = (!q || text.includes(q)) ? '' : 'none';
+                    });
+                });
+            }
+
+            // Instant Client-Side Search for Admins Tab
+            const admSearch = document.getElementById('adminAccountSearch');
+            if (admSearch) {
+                admSearch.addEventListener('input', (e) => {
+                    const q = e.target.value.toLowerCase().trim();
+                    const rows = document.querySelectorAll('.admin-user-row');
+                    rows.forEach(r => {
+                        const text = r.getAttribute('data-search') || '';
+                        r.style.display = (!q || text.includes(q)) ? '' : 'none';
+                    });
+                });
+            }
+
+            // Recent Bookings Interactive Pagination & Filter in Overview Tab
+            const bookingSearch = document.getElementById('recentBookingSearch');
+            const bookingStatusFilter = document.getElementById('recentBookingStatusFilter');
+            const bookingRows = Array.from(document.querySelectorAll('.booking-row'));
+            const prevBtn = document.getElementById('recentPrevBtn');
+            const nextBtn = document.getElementById('recentNextBtn');
+            const pageIndicator = document.getElementById('recentPageIndicator');
+            const countDisplay = document.getElementById('recentTableCount');
+
+            if (bookingRows.length > 0) {
+                let currentPage = 1;
+                const pageSize = 6;
+                let filteredRows = [...bookingRows];
+
+                function renderBookingsPage() {
+                    const totalFiltered = filteredRows.length;
+                    const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+                    if (currentPage > totalPages) currentPage = totalPages;
+                    if (currentPage < 1) currentPage = 1;
+
+                    bookingRows.forEach(row => row.style.display = 'none');
+
+                    const startIndex = (currentPage - 1) * pageSize;
+                    const endIndex = startIndex + pageSize;
+                    const pageItems = filteredRows.slice(startIndex, endIndex);
+                    pageItems.forEach(row => row.style.display = '');
+
+                    if (countDisplay) {
+                        countDisplay.textContent = totalFiltered > 0 
+                            ? `Showing ${startIndex + 1} to ${Math.min(endIndex, totalFiltered)} of ${totalFiltered} bookings`
+                            : 'No bookings match current filters';
+                    }
+
+                    if (pageIndicator) {
+                        pageIndicator.textContent = `Page ${currentPage} of ${totalPages}`;
+                    }
+
+                    if (prevBtn) prevBtn.disabled = (currentPage <= 1);
+                    if (nextBtn) nextBtn.disabled = (currentPage >= totalPages);
+                }
+
+                function applyFilters() {
+                    const query = (bookingSearch ? bookingSearch.value : '').toLowerCase().trim();
+                    const selectedStatus = bookingStatusFilter ? bookingStatusFilter.value : 'All';
+
+                    filteredRows = bookingRows.filter(row => {
+                        const ref = row.getAttribute('data-ref') || '';
+                        const customer = row.getAttribute('data-customer') || '';
+                        const city = row.getAttribute('data-city') || '';
+                        const mitra = row.getAttribute('data-mitra') || '';
+                        const status = row.getAttribute('data-status') || '';
+
+                        const matchesQuery = !query || ref.includes(query) || customer.includes(query) || city.includes(query) || mitra.includes(query);
+                        const matchesStatus = (selectedStatus === 'All') || (status === selectedStatus);
+
+                        return matchesQuery && matchesStatus;
+                    });
+
+                    currentPage = 1;
+                    renderBookingsPage();
+                }
+
+                if (bookingSearch) bookingSearch.addEventListener('input', applyFilters);
+                if (bookingStatusFilter) bookingStatusFilter.addEventListener('change', applyFilters);
+
+                if (prevBtn) {
+                    prevBtn.addEventListener('click', () => {
+                        if (currentPage > 1) {
+                            currentPage--;
+                            renderBookingsPage();
+                        }
+                    });
+                }
+
+                if (nextBtn) {
+                    nextBtn.addEventListener('click', () => {
+                        const totalPages = Math.ceil(filteredRows.length / pageSize);
+                        if (currentPage < totalPages) {
+                            currentPage++;
+                            renderBookingsPage();
+                        }
+                    });
+                }
+
+                renderBookingsPage();
+            }
+
+            // Initialize Lucide Icons
             if (typeof lucide !== 'undefined') {
                 lucide.createIcons();
             }
+
+            <?php if ($activeTab === 'overview'): ?>
+            // =========================================================
+            // OVERVIEW TAB: CHART.JS INTERACTIVE VISUALIZATIONS
+            // =========================================================
+            const analyticsPayload = <?= json_encode($analyticsPayload ?? [], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP); ?>;
+            let currentPeriod = '<?= htmlspecialchars($period ?? '30d', ENT_QUOTES, 'UTF-8'); ?>';
+
+            if (typeof Chart !== 'undefined') {
+                Chart.defaults.font.family = "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+                Chart.defaults.color = '#64748B';
+                Chart.defaults.plugins.tooltip.padding = 9;
+                Chart.defaults.plugins.tooltip.cornerRadius = 8;
+                Chart.defaults.plugins.tooltip.backgroundColor = '#0F172A';
+                Chart.defaults.plugins.tooltip.titleFont = { weight: '700', size: 12 };
+                Chart.defaults.plugins.tooltip.bodyFont = { size: 12 };
+
+                let revenueTrendChart = null;
+                let bookingStatusChart = null;
+                let activityBarChart = null;
+                let categoryStackedChart = null;
+                let customerCityChart = null;
+                let serviceCategoryChart = null;
+                let popularServicesChart = null;
+                let topMitrasChart = null;
+
+                function initOverviewCharts(cur) {
+                    // 1. Area & Line Chart: Revenue & Volume Trends
+                    const revCtx = document.getElementById('revenueVolumeTrendChart');
+                    if (revCtx) {
+                        revenueTrendChart = new Chart(revCtx, {
+                            type: 'line',
+                            data: {
+                                labels: cur.timeline.labels,
+                                datasets: [
+                                    {
+                                        label: 'Revenue (₹)',
+                                        data: cur.timeline.revenue,
+                                        borderColor: '#FF5500',
+                                        backgroundColor: 'rgba(255, 85, 0, 0.10)',
+                                        borderWidth: 2.5,
+                                        fill: true,
+                                        tension: 0.35,
+                                        pointRadius: 4,
+                                        pointHoverRadius: 6,
+                                        pointBackgroundColor: '#FFFFFF',
+                                        pointBorderColor: '#FF5500',
+                                        pointBorderWidth: 2,
+                                        yAxisID: 'y1'
+                                    },
+                                    {
+                                        label: 'Bookings Volume',
+                                        data: cur.timeline.bookings,
+                                        borderColor: '#2563EB',
+                                        backgroundColor: '#2563EB',
+                                        borderWidth: 2.5,
+                                        fill: false,
+                                        tension: 0.35,
+                                        pointRadius: 4,
+                                        pointHoverRadius: 6,
+                                        pointBackgroundColor: '#FFFFFF',
+                                        pointBorderColor: '#2563EB',
+                                        pointBorderWidth: 2,
+                                        yAxisID: 'y'
+                                    },
+                                    {
+                                        label: 'Customer Signups',
+                                        data: cur.timeline.customers,
+                                        borderColor: '#8B5CF6',
+                                        backgroundColor: '#8B5CF6',
+                                        borderWidth: 2,
+                                        borderDash: [4, 4],
+                                        fill: false,
+                                        tension: 0.35,
+                                        pointRadius: 3,
+                                        pointHoverRadius: 5,
+                                        pointBackgroundColor: '#FFFFFF',
+                                        pointBorderColor: '#8B5CF6',
+                                        pointBorderWidth: 2,
+                                        yAxisID: 'y'
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                interaction: { mode: 'index', intersect: false },
+                                scales: {
+                                    x: { grid: { display: false } },
+                                    y: {
+                                        type: 'linear',
+                                        display: true,
+                                        position: 'left',
+                                        beginAtZero: true,
+                                        ticks: { precision: 0 },
+                                        title: { display: true, text: 'Volume (Orders / Signups)', font: { weight: '700', size: 10 } }
+                                    },
+                                    y1: {
+                                        type: 'linear',
+                                        display: true,
+                                        position: 'right',
+                                        beginAtZero: true,
+                                        grid: { drawOnChartArea: false },
+                                        ticks: { callback: v => '₹' + v.toLocaleString() },
+                                        title: { display: true, text: 'Platform Revenue (₹)', font: { weight: '700', size: 10 } }
+                                    }
+                                },
+                                plugins: {
+                                    legend: { position: 'top', labels: { boxWidth: 12, font: { weight: '600', size: 11 } } },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                if (context.dataset.yAxisID === 'y1') {
+                                                    return ` Revenue: ₹${Number(context.raw).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                                }
+                                                return ` ${context.dataset.label}: ${context.raw}`;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    // 2. Booking Status Donut Chart
+                    const statusCtx = document.getElementById('bookingStatusDonutChart');
+                    if (statusCtx) {
+                        bookingStatusChart = new Chart(statusCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: cur.bookingStatus.labels,
+                                datasets: [{
+                                    data: cur.bookingStatus.counts,
+                                    backgroundColor: ['#10B981', '#2563EB', '#F59E0B', '#EF4444'],
+                                    borderWidth: 2,
+                                    borderColor: '#FFFFFF',
+                                    hoverOffset: 6
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                cutout: '72%',
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { weight: '600', size: 11 } } },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(ctx) {
+                                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                                const pct = total > 0 ? Math.round((ctx.raw / total) * 100) : 0;
+                                                return ` ${ctx.label}: ${ctx.raw} (${pct}%)`;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    // 3. Comparative Bar Chart (Orders vs Completed vs Cancelled)
+                    const actCtx = document.getElementById('activityBarChart');
+                    if (actCtx) {
+                        activityBarChart = new Chart(actCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: cur.timeline.labels,
+                                datasets: [
+                                    {
+                                        label: 'Bookings Placed',
+                                        data: cur.timeline.bookings,
+                                        backgroundColor: '#2563EB',
+                                        borderRadius: 4
+                                    },
+                                    {
+                                        label: 'Services Completed',
+                                        data: cur.timeline.completed,
+                                        backgroundColor: '#10B981',
+                                        borderRadius: 4
+                                    },
+                                    {
+                                        label: 'Cancellations',
+                                        data: cur.timeline.cancelled,
+                                        backgroundColor: '#EF4444',
+                                        borderRadius: 4
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    x: { grid: { display: false } },
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: { precision: 0 },
+                                        title: { display: true, text: 'Order Count', font: { weight: '700', size: 10 } }
+                                    }
+                                },
+                                plugins: {
+                                    legend: { position: 'top', labels: { boxWidth: 12, font: { weight: '600', size: 11 } } }
+                                }
+                            }
+                        });
+                    }
+
+                    // 4. Stacked Category Status Matrix
+                    const stackCtx = document.getElementById('categoryStatusStackedChart');
+                    if (stackCtx) {
+                        categoryStackedChart = new Chart(stackCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: cur.stackedStatus.categories,
+                                datasets: [
+                                    {
+                                        label: 'Completed',
+                                        data: cur.stackedStatus.completed,
+                                        backgroundColor: '#10B981',
+                                        borderRadius: 2
+                                    },
+                                    {
+                                        label: 'In Progress',
+                                        data: cur.stackedStatus.inProgress,
+                                        backgroundColor: '#2563EB',
+                                        borderRadius: 2
+                                    },
+                                    {
+                                        label: 'Confirmed',
+                                        data: cur.stackedStatus.confirmed,
+                                        backgroundColor: '#F59E0B',
+                                        borderRadius: 2
+                                    },
+                                    {
+                                        label: 'Cancelled',
+                                        data: cur.stackedStatus.cancelled,
+                                        backgroundColor: '#EF4444',
+                                        borderRadius: 2
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    x: {
+                                        stacked: true,
+                                        grid: { display: false },
+                                        ticks: { font: { size: 10, weight: '600' } }
+                                    },
+                                    y: {
+                                        stacked: true,
+                                        beginAtZero: true,
+                                        ticks: { precision: 0 },
+                                        title: { display: true, text: 'Bookings', font: { weight: '700', size: 10 } }
+                                    }
+                                },
+                                plugins: {
+                                    legend: { position: 'top', labels: { boxWidth: 12, font: { weight: '600', size: 11 } } }
+                                }
+                            }
+                        });
+                    }
+
+                    // 5. Customer Geographic Spread (Polar Area Chart)
+                    const cityCtx = document.getElementById('customerCityPolarChart');
+                    if (cityCtx) {
+                        customerCityChart = new Chart(cityCtx, {
+                            type: 'polarArea',
+                            data: {
+                                labels: cur.customerCities.labels,
+                                datasets: [{
+                                    data: cur.customerCities.counts,
+                                    backgroundColor: [
+                                        'rgba(15, 23, 42, 0.78)',
+                                        'rgba(255, 85, 0, 0.78)',
+                                        'rgba(37, 99, 235, 0.78)',
+                                        'rgba(16, 185, 129, 0.78)',
+                                        'rgba(139, 92, 246, 0.78)',
+                                        'rgba(245, 158, 11, 0.78)'
+                                    ],
+                                    borderWidth: 2,
+                                    borderColor: '#FFFFFF'
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    r: {
+                                        ticks: { precision: 0, backdropColor: 'transparent', font: { size: 9 } },
+                                        grid: { color: '#F1F5F9' }
+                                    }
+                                },
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { weight: '600', size: 11 } } },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(ctx) {
+                                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                                                const pct = total > 0 ? Math.round((ctx.raw / total) * 100) : 0;
+                                                return ` ${ctx.label}: ${ctx.raw} registered users (${pct}%)`;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    // 6. Service Category Footprint (Radar Web Chart)
+                    const catRadarCtx = document.getElementById('serviceCategoryRadarChart');
+                    if (catRadarCtx) {
+                        serviceCategoryChart = new Chart(catRadarCtx, {
+                            type: 'radar',
+                            data: {
+                                labels: cur.serviceCategories.labels,
+                                datasets: [
+                                    {
+                                        label: 'Requested Orders',
+                                        data: cur.serviceCategories.counts,
+                                        borderColor: '#FF5500',
+                                        backgroundColor: 'rgba(255, 85, 0, 0.22)',
+                                        borderWidth: 2,
+                                        pointBackgroundColor: '#FF5500',
+                                        pointRadius: 4
+                                    },
+                                    {
+                                        label: 'Completed Deliveries',
+                                        data: cur.serviceCategories.completed,
+                                        borderColor: '#10B981',
+                                        backgroundColor: 'rgba(16, 185, 129, 0.20)',
+                                        borderWidth: 2,
+                                        pointBackgroundColor: '#10B981',
+                                        pointRadius: 4
+                                    }
+                                ]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                elements: { line: { tension: 0.2 } },
+                                scales: {
+                                    r: {
+                                        pointLabels: { font: { weight: '700', size: 10 }, color: '#334155' },
+                                        ticks: { precision: 0, backdropColor: 'transparent', font: { size: 9 } },
+                                        grid: { color: '#F1F5F9' },
+                                        angleLines: { color: '#E2E8F0' }
+                                    }
+                                },
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10, font: { weight: '600', size: 11 } } },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(ctx) {
+                                                return ` ${ctx.dataset.label}: ${ctx.raw} jobs`;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    // 7. Most Popular Services (Vertical Column Chart)
+                    const popCtx = document.getElementById('popularServicesColumnChart');
+                    if (popCtx) {
+                        popularServicesChart = new Chart(popCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: cur.popularServices.labels.map(l => l.length > 18 ? l.substring(0, 16) + '…' : l),
+                                datasets: [{
+                                    label: 'Bookings',
+                                    data: cur.popularServices.counts,
+                                    backgroundColor: '#FF5500',
+                                    borderRadius: 6
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    x: {
+                                        grid: { display: false },
+                                        ticks: { font: { weight: '600', size: 10 }, maxRotation: 20, minRotation: 15 }
+                                    },
+                                    y: {
+                                        beginAtZero: true,
+                                        ticks: { precision: 0 },
+                                        title: { display: true, text: 'Order Count', font: { weight: '700', size: 10 } }
+                                    }
+                                },
+                                plugins: {
+                                    legend: { display: false },
+                                    tooltip: {
+                                        callbacks: {
+                                            title: function(items) {
+                                                return cur.popularServices.labels[items[0].dataIndex] || '';
+                                            },
+                                            label: function(ctx) {
+                                                const rev = cur.popularServices.revenues[ctx.dataIndex] || 0;
+                                                return ` Requests: ${ctx.raw} orders • Value: ₹${Number(rev).toLocaleString()}`;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+
+                    // 8. Top-Performing Mitras (Horizontal Bar Chart)
+                    const mitraCtx = document.getElementById('topMitrasChart');
+                    if (mitraCtx) {
+                        topMitrasChart = new Chart(mitraCtx, {
+                            type: 'bar',
+                            data: {
+                                labels: cur.topMitras.labels,
+                                datasets: [{
+                                    label: 'Completed Services',
+                                    data: cur.topMitras.completed,
+                                    backgroundColor: '#10B981',
+                                    borderRadius: 4
+                                }]
+                            },
+                            options: {
+                                indexAxis: 'y',
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                scales: {
+                                    x: {
+                                        beginAtZero: true,
+                                        ticks: { precision: 0 },
+                                        title: { display: true, text: 'Completed Doorstep Services', font: { weight: '700', size: 10 } }
+                                    },
+                                    y: {
+                                        grid: { display: false },
+                                        ticks: { font: { weight: '700', size: 11 } }
+                                    }
+                                },
+                                plugins: {
+                                    legend: { display: false },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(ctx) {
+                                                const rating = cur.topMitras.ratings[ctx.dataIndex] || '5.0';
+                                                const earn = cur.topMitras.earnings[ctx.dataIndex] || 0;
+                                                return ` Completed: ${ctx.raw} orders • Rating: ★ ${rating} • Earnings: ₹${Number(earn).toLocaleString()}`;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+
+                function renderTopMitrasLeaderboard(details) {
+                    const listEl = document.getElementById('topMitrasLeaderboardList');
+                    if (!listEl) return;
+                    if (!details || details.length === 0) {
+                        listEl.innerHTML = '<div style="font-size: 0.775rem; color: var(--admin-text-muted); text-align: center; padding: 0.5rem 0;">No verified Mitra dispatches recorded in this timeframe.</div>';
+                        return;
+                    }
+                    let html = '';
+                    details.forEach(m => {
+                        html += `
+                            <div class="top-mitra-row">
+                                <div class="mitra-row-left">
+                                    <div class="mitra-row-avatar">${m.initials}</div>
+                                    <div class="mitra-row-info">
+                                        <span class="mitra-row-name">${m.name}</span>
+                                        <span class="mitra-row-rating">★ ${Number(m.rating).toFixed(1)} Rating</span>
+                                    </div>
+                                </div>
+                                <div class="mitra-row-right">
+                                    <span class="mitra-pill-jobs">${m.comp} Completed</span>
+                                    <span class="mitra-pill-earn">₹${Number(m.earn).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    listEl.innerHTML = html;
+                }
+
+                function updateOverviewCharts(cur) {
+                    // Update 1: Revenue Volume Trends
+                    if (revenueTrendChart) {
+                        revenueTrendChart.data.labels = cur.timeline.labels;
+                        revenueTrendChart.data.datasets[0].data = cur.timeline.revenue;
+                        revenueTrendChart.data.datasets[1].data = cur.timeline.bookings;
+                        revenueTrendChart.data.datasets[2].data = cur.timeline.customers;
+                        revenueTrendChart.update();
+                    }
+
+                    // Update 2: Booking Status Donut
+                    if (bookingStatusChart) {
+                        bookingStatusChart.data.labels = cur.bookingStatus.labels;
+                        bookingStatusChart.data.datasets[0].data = cur.bookingStatus.counts;
+                        bookingStatusChart.update();
+                    }
+
+                    // Update 3: Activity Bar Chart
+                    if (activityBarChart) {
+                        activityBarChart.data.labels = cur.timeline.labels;
+                        activityBarChart.data.datasets[0].data = cur.timeline.bookings;
+                        activityBarChart.data.datasets[1].data = cur.timeline.completed;
+                        activityBarChart.data.datasets[2].data = cur.timeline.cancelled;
+                        activityBarChart.update();
+                    }
+
+                    // Update 4: Category Stacked Chart
+                    if (categoryStackedChart) {
+                        categoryStackedChart.data.labels = cur.stackedStatus.categories;
+                        categoryStackedChart.data.datasets[0].data = cur.stackedStatus.completed;
+                        categoryStackedChart.data.datasets[1].data = cur.stackedStatus.inProgress;
+                        categoryStackedChart.data.datasets[2].data = cur.stackedStatus.confirmed;
+                        categoryStackedChart.data.datasets[3].data = cur.stackedStatus.cancelled;
+                        categoryStackedChart.update();
+                    }
+
+                    // Update 5: Polar Area Chart
+                    if (customerCityChart) {
+                        customerCityChart.data.labels = cur.customerCities.labels;
+                        customerCityChart.data.datasets[0].data = cur.customerCities.counts;
+                        customerCityChart.update();
+                    }
+
+                    // Update 6: Radar Web Chart
+                    if (serviceCategoryChart) {
+                        serviceCategoryChart.data.labels = cur.serviceCategories.labels;
+                        serviceCategoryChart.data.datasets[0].data = cur.serviceCategories.counts;
+                        serviceCategoryChart.data.datasets[1].data = cur.serviceCategories.completed;
+                        serviceCategoryChart.update();
+                    }
+
+                    // Update 7: Vertical Column Chart
+                    if (popularServicesChart) {
+                        popularServicesChart.data.labels = cur.popularServices.labels.map(l => l.length > 18 ? l.substring(0, 16) + '…' : l);
+                        popularServicesChart.data.datasets[0].data = cur.popularServices.counts;
+                        popularServicesChart.update();
+                    }
+
+                    // Update 8: Top Mitras Chart & Leaderboard
+                    if (topMitrasChart) {
+                        topMitrasChart.data.labels = cur.topMitras.labels;
+                        topMitrasChart.data.datasets[0].data = cur.topMitras.completed;
+                        topMitrasChart.update();
+                    }
+                    renderTopMitrasLeaderboard(cur.topMitras.details);
+                }
+
+                // Global Dynamic Date Filter Switcher
+                window.switchAnalyticsPeriod = function(periodKey, event) {
+                    if (event) event.preventDefault();
+                    if (!analyticsPayload || !analyticsPayload[periodKey]) return;
+
+                    currentPeriod = periodKey;
+                    const cur = analyticsPayload[periodKey];
+
+                    // 1. Update filter pills active state
+                    document.querySelectorAll('.analytics-pill-btn').forEach(btn => {
+                        btn.classList.toggle('active', btn.getAttribute('data-period') === periodKey);
+                    });
+
+                    // 2. Update Range Label
+                    const rangeEl = document.getElementById('overviewRangeDesc');
+                    if (rangeEl) rangeEl.textContent = `(${cur.range})`;
+
+                    // 3. Update KPI Cards
+                    const setVal = (id, val) => {
+                        const el = document.getElementById(id);
+                        if (el) el.textContent = val;
+                    };
+                    setVal('kpiTotalBookings', Number(cur.kpis.totalBookings).toLocaleString());
+                    setVal('kpiActiveBookings', Number(cur.kpis.activeBookings).toLocaleString());
+                    setVal('kpiPlatformRevenue', '₹' + Number(cur.kpis.platformRevenue).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                    setVal('kpiCompletedServices', Number(cur.kpis.completedBookings).toLocaleString());
+                    setVal('kpiCancellations', Number(cur.kpis.cancelledBookings).toLocaleString());
+                    setVal('kpiRegisteredCustomers', Number(cur.kpis.registeredCustomers).toLocaleString());
+                    setVal('kpiVerifiedProviders', Number(cur.kpis.verifiedProviders).toLocaleString());
+
+                    // 4. Update Progress Indicators
+                    setVal('progProvPct', cur.progress.provVerifRate + '%');
+                    const provFill = document.getElementById('progProvFill');
+                    if (provFill) provFill.style.width = cur.progress.provVerifRate + '%';
+                    setVal('progProvSub', `${cur.progress.provApproved} of ${cur.progress.provTotal} service professionals approved for doorstep dispatch.`);
+
+                    setVal('progCompPct', cur.progress.completionRate + '%');
+                    const compFill = document.getElementById('progCompFill');
+                    if (compFill) compFill.style.width = cur.progress.completionRate + '%';
+                    setVal('progCompSub', `${cur.progress.completedBookings} of ${cur.progress.totalBookings} total period orders successfully delivered.`);
+
+                    setVal('progFulfillPct', cur.progress.fulfillmentRate + '%');
+                    const fulfillFill = document.getElementById('progFulfillFill');
+                    if (fulfillFill) fulfillFill.style.width = cur.progress.fulfillmentRate + '%';
+
+                    setVal('progCustPct', cur.progress.custVerifRate + '%');
+                    const custFill = document.getElementById('progCustFill');
+                    if (custFill) custFill.style.width = cur.progress.custVerifRate + '%';
+                    setVal('progCustSub', `${cur.progress.custVerified} of ${cur.progress.custTotal} registered homeowners with verified terms.`);
+
+                    // 5. Update Donut Center Overlays
+                    setVal('donutTotalBookings', Number(cur.kpis.totalBookings).toLocaleString());
+                    setVal('donutTotalCustomers', Number(cur.kpis.registeredCustomers).toLocaleString());
+                    setVal('donutTotalCategories', cur.serviceCategories.labels.length);
+
+                    // 6. Update Chart.js Instances
+                    updateOverviewCharts(cur);
+
+                    // 7. Update browser history URL smoothly
+                    if (window.history && window.history.pushState) {
+                        window.history.pushState(null, '', `index.php?tab=overview&period=${periodKey}`);
+                    }
+                };
+
+                // Initialize Charts on Load
+                if (analyticsPayload[currentPeriod]) {
+                    initOverviewCharts(analyticsPayload[currentPeriod]);
+                }
+            }
+            <?php endif; ?>
         });
     </script>
 </body>
