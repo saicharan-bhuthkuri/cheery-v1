@@ -176,6 +176,7 @@ function ensureDatabaseSchema(PDO $pdo): void {
                 'terms_accepted_at' => "DATETIME DEFAULT NULL"
             ],
             'admins' => [
+                'admin_code' => "VARCHAR(30) NULL UNIQUE",
                 'mobile' => "VARCHAR(20) NULL DEFAULT NULL",
                 'last_login_at' => "DATETIME DEFAULT NULL",
                 'role' => "VARCHAR(50) NOT NULL DEFAULT 'admin'",
@@ -224,26 +225,50 @@ function ensureDatabaseSchema(PDO $pdo): void {
             $checkCharan->execute();
             $charanRow = $checkCharan->fetch();
             if ($charanRow) {
-                // Ensure Charan has developer role, immutable developer flags, and valid mobile
+                // Ensure Charan has developer role, immutable developer flags, official contact info, and admin_code
                 $updCharan = $pdo->prepare("
                     UPDATE `admins` 
                     SET `role` = 'developer',
                         `is_protected` = 1,
                         `system_tag` = 'DEVELOPER_ROOT',
                         `is_active` = 1,
-                        `full_name` = IF(`full_name` IS NULL OR `full_name` = '' OR `full_name` = 'Charan (Super Admin)', 'Charan (Developer)', `full_name`),
-                        `mobile` = IF(`mobile` IS NULL OR `mobile` = '', '9876543210', `mobile`)
+                        `username` = 'charan_developer',
+                        `admin_code` = 'KM-DEV-001',
+                        `full_name` = 'Charan',
+                        `mobile` = '6301133468',
+                        `email` = 'saicharanbhuthkuri8336@gmail.com'
                     WHERE `id` = ?
                 ");
                 $updCharan->execute([$charanRow['id']]);
             } else {
-                $initPass = getenv('INITIAL_SUPERADMIN_PASSWORD') ?: 'Admin@KaamMitra2025';
+                $initPass = getenv('INITIAL_SUPERADMIN_PASSWORD') ?: 'Bharat@8336';
                 $initialHash = password_hash($initPass, PASSWORD_DEFAULT);
                 $initStmt = $pdo->prepare("
-                    INSERT INTO `admins` (`username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
-                    VALUES (?, ?, ?, ?, ?, 'developer', 1, 1, 'DEVELOPER_ROOT', NOW())
+                    INSERT INTO `admins` (`admin_code`, `username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
+                    VALUES ('KM-DEV-001', 'charan_developer', 'saicharanbhuthkuri8336@gmail.com', 'Charan', '6301133468', ?, 'developer', 1, 1, 'DEVELOPER_ROOT', NOW())
                 ");
-                $initStmt->execute(['Charan', 'charan@kaammitra.in', 'Charan (Developer)', '9876543210', $initialHash]);
+                $initStmt->execute([$initialHash]);
+            }
+
+            // Sync legacy admin accounts so every admin has an official Admin ID (KM-DEV-001, KM-SADM-XXX, KM-ADM-XXX)
+            $existingAdmins = $pdo->query("SELECT `id`, `role`, `admin_code`, `username`, `full_name`, `mobile` FROM `admins` ORDER BY `id` ASC")->fetchAll(PDO::FETCH_ASSOC);
+            $roleCounters = ['DEV' => 1, 'SADM' => 1, 'ADM' => 1];
+            foreach ($existingAdmins as $admRow) {
+                $aId = (int)$admRow['id'];
+                $aRole = strtolower($admRow['role'] ?? 'admin');
+                $prefix = ($aRole === 'developer') ? 'DEV' : (($aRole === 'super_admin' || $aRole === 'superadmin') ? 'SADM' : 'ADM');
+                
+                $currCode = $admRow['admin_code'] ?? '';
+                if (empty($currCode)) {
+                    $assignedCode = sprintf("KM-%s-%03d", $prefix, $roleCounters[$prefix]);
+                    // Check if code taken
+                    while ($pdo->query("SELECT `id` FROM `admins` WHERE `admin_code` = '{$assignedCode}' AND `id` != {$aId}")->fetch()) {
+                        $roleCounters[$prefix]++;
+                        $assignedCode = sprintf("KM-%s-%03d", $prefix, $roleCounters[$prefix]);
+                    }
+                    $pdo->prepare("UPDATE `admins` SET `admin_code` = ? WHERE `id` = ?")->execute([$assignedCode, $aId]);
+                    $roleCounters[$prefix]++;
+                }
             }
         } catch (Throwable $e) {
             error_log("Failed to seed/verify initial Developer Charan: " . $e->getMessage());

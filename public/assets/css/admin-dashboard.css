@@ -2493,3 +2493,16 @@ body.admin-body {
     gap: 0.35rem;
 }
 
+.admin-id-badge {
+    display: inline-flex;
+    align-items: center;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #0F172A;
+    background: #F1F5F9;
+    border: 1px solid #CBD5E1;
+    border-radius: 4px;
+    padding: 0.1rem 0.4rem;
+    letter-spacing: 0.03em;
+}

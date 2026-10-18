@@ -263,6 +263,7 @@ HTML;
     if ($admIsDev) {
         $crownIcon = '<span title="System Developer — Immutable Account" style="color: #7C3AED; display: inline-flex;"><i data-lucide="crown" style="width: 14px; height: 14px;"></i></span>';
     }
+    $admCode = htmlspecialchars($adm['admin_code'] ?? ('KM-ADM-' . str_pad((string)$admId, 3, '0', STR_PAD_LEFT)));
 
     return <<<HTML
 <tr class="admin-user-row" id="admin_row_{$admId}" data-search="{$searchData}">
@@ -271,8 +272,9 @@ HTML;
             <strong style="color: var(--admin-text-main); font-size: 0.95rem;">{$escapedUsername}</strong>
             {$crownIcon}
         </div>
-        <div style="font-size: 0.725rem; color: var(--admin-text-muted);">
-            Admin ID: #{$admId}{$devTag}
+        <div style="font-size: 0.725rem; color: var(--admin-text-muted); display: flex; align-items: center; gap: 0.35rem; margin-top: 2px;">
+            <span class="admin-id-badge">{$admCode}</span>
+            {$devTag}
         </div>
     </td>
     <td>
@@ -554,7 +556,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
 
             // PROFILE MANAGEMENT: UPDATE CHARAN (DEVELOPER) / SELF
             case 'update_profile':
-                $targetId = (int)($_POST['target_id'] ?? $currentAdmin['id']);
+                $targetId = !empty($_POST['target_id']) ? (int)$_POST['target_id'] : (int)$currentAdmin['id'];
                 $res = updateAdminProfile($targetId, $_POST, (int)$currentAdmin['id']);
                 if ($isAjax) {
                     header('Content-Type: application/json');

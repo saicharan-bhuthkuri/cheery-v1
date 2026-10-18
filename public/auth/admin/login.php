@@ -181,7 +181,7 @@ $csrfToken = getCsrfToken();
                                     id="adminUsername" 
                                     name="username" 
                                     class="input-control" 
-                                    placeholder="e.g. rahul_admin27 or rahul@kaammitra.in"
+                                    placeholder="e.g. KM-DEV-001, charan_developer, or saicharanbhuthkuri8336@gmail.com"
                                     value="<?= htmlspecialchars($_POST['username'] ?? ''); ?>"
                                     required 
                                     autocomplete="username"

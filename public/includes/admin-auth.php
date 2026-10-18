@@ -191,7 +191,7 @@ function getCurrentAdmin(): ?array {
     try {
         $adminId = (int)$_SESSION['admin_id'];
         $stmt = $pdo->prepare("
-            SELECT `id`, `username`, `email`, `full_name`, `mobile`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`, `updated_at`, `last_login_at`
+            SELECT `id`, `admin_code`, `username`, `email`, `full_name`, `mobile`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`, `updated_at`, `last_login_at`
             FROM `admins`
             WHERE `id` = ?
             LIMIT 1
@@ -362,18 +362,19 @@ function loginAdmin(string $loginIdentifier, string $password): array {
     }
 
     try {
-        // 2. Fetch admin record by username OR email (and Developer handle alias)
+        // 2. Fetch admin record by username, email, or official admin_code (and Developer handle alias)
         $stmt = $pdo->prepare("
-            SELECT `id`, `username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`
+            SELECT `id`, `admin_code`, `username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`
             FROM `admins`
             WHERE (
                 LOWER(`username`) = LOWER(?) 
                 OR LOWER(`email`) = LOWER(?)
+                OR LOWER(COALESCE(`admin_code`, '')) = LOWER(?)
                 OR (`system_tag` = 'DEVELOPER_ROOT' AND LOWER(?) IN ('charan', 'charan_developer'))
             )
             LIMIT 1
         ");
-        $stmt->execute([$loginIdentifier, $loginIdentifier, $loginIdentifier]);
+        $stmt->execute([$loginIdentifier, $loginIdentifier, $loginIdentifier, $loginIdentifier]);
         $admin = $stmt->fetch();
 
         // 3. Verify password
@@ -415,6 +416,7 @@ function loginAdmin(string $loginIdentifier, string $password): array {
         }
 
         $_SESSION['admin_id'] = (int)$admin['id'];
+        $_SESSION['admin_code'] = $admin['admin_code'] ?? '';
         $_SESSION['admin_username'] = $admin['username'];
         $_SESSION['admin_role'] = $admin['role'];
         $_SESSION['admin_name'] = $admin['full_name'] ?: $admin['username'];
@@ -837,6 +839,42 @@ function generateUniqueAdminUsername(string $fullName, string $role = ROLE_ADMIN
 }
 
 /**
+ * Generate a unique standardized Admin Code / ID based on role.
+ * Standard format:
+ * - Developer: KM-DEV-001
+ * - Super Admin: KM-SADM-001, KM-SADM-002...
+ * - Admin: KM-ADM-001, KM-ADM-002...
+ */
+function generateAdminCode(string $role, ?PDO $pdo = null): string {
+    if (!$pdo) {
+        $pdo = getDBConnection();
+    }
+    $role = strtolower(trim($role));
+    $prefix = ($role === ROLE_DEVELOPER || $role === 'developer') ? 'DEV' : (($role === ROLE_SUPER_ADMIN || $role === 'super_admin' || $role === 'superadmin') ? 'SADM' : 'ADM');
+
+    if (!$pdo) {
+        return sprintf("KM-%s-%03d", $prefix, 1);
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT `admin_code` FROM `admins` WHERE `admin_code` LIKE ?");
+        $stmt->execute(["KM-{$prefix}-%"]);
+        $highest = 0;
+        while ($code = $stmt->fetchColumn()) {
+            if (preg_match('/KM-[A-Z]+-(\d+)/', $code, $m)) {
+                $val = (int)$m[1];
+                if ($val > $highest) {
+                    $highest = $val;
+                }
+            }
+        }
+        return sprintf("KM-%s-%03d", $prefix, $highest + 1);
+    } catch (Throwable $e) {
+        return sprintf("KM-%s-%03d", $prefix, random_int(100, 999));
+    }
+}
+
+/**
  * Create a new administrator account.
  * Permissions:
  * - Developer: Can create 'admin' and 'super_admin' accounts. Cannot create additional Developer accounts.
@@ -957,14 +995,16 @@ function createAdminAccount(array $data, int $actingAdminId): array {
         }
 
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+        $adminCode = generateAdminCode($requestedRole, $pdo);
 
         $stmt = $pdo->prepare("
-            INSERT INTO `admins` (`username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
-            VALUES (?, ?, ?, ?, ?, ?, 1, 0, NULL, NOW())
+            INSERT INTO `admins` (`admin_code`, `username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, NULL, NOW())
         ");
         
         try {
             $stmt->execute([
+                $adminCode,
                 $finalUsername,
                 !empty($email) ? $email : null,
                 !empty($fullName) ? $fullName : $finalUsername,
@@ -977,6 +1017,7 @@ function createAdminAccount(array $data, int $actingAdminId): array {
             if ($pe->getCode() == 23000 || strpos($pe->getMessage(), '1062') !== false) {
                 $finalUsername = generateUniqueAdminUsername($fullName ?: 'Admin', $requestedRole, $cleanMobile, $pdo);
                 $stmt->execute([
+                    $adminCode,
                     $finalUsername,
                     !empty($email) ? $email : null,
                     !empty($fullName) ? $fullName : $finalUsername,
@@ -996,13 +1037,14 @@ function createAdminAccount(array $data, int $actingAdminId): array {
             'ADMIN_ACCOUNT_CREATED',
             'admin',
             (string)$newAdminId,
-            "Created administrator account '{$finalUsername}' with role '{$requestedRole}' (Mobile: " . ($cleanMobile ?: 'N/A') . ")"
+            "Created administrator account '{$finalUsername}' [{$adminCode}] with role '{$requestedRole}' (Mobile: " . ($cleanMobile ?: 'N/A') . ")"
         );
 
         return [
             'success' => true,
-            'message' => "Administrator account '{$finalUsername}' ({$requestedRole}) successfully created.",
+            'message' => "Administrator account '{$finalUsername}' ({$requestedRole}) successfully created. Official Admin ID: {$adminCode}",
             'admin_id' => $newAdminId,
+            'admin_code' => $adminCode,
             'username' => $finalUsername
         ];
     } catch (Throwable $e) {
@@ -1025,6 +1067,10 @@ function updateAdminProfile(int $targetAdminId, array $data, int $actingAdminId)
     $actingAdmin = getCurrentAdmin();
     if (!$actingAdmin) {
         return ['success' => false, 'message' => 'Unauthorized: Please authenticate to proceed.'];
+    }
+
+    if ($targetAdminId <= 0) {
+        $targetAdminId = (int)$actingAdmin['id'];
     }
 
     $isDev = isDeveloper($actingAdmin);
