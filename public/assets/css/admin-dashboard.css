@@ -2409,3 +2409,87 @@ body.admin-body {
     }
 }
 
+/* ==========================================================================
+   17. DYNAMIC USERNAME GENERATOR & PROFILE EDIT MODAL ENHANCEMENTS
+   ========================================================================== */
+.username-gen-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.35rem;
+}
+
+.username-gen-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.685rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: #EEF2FF;
+    color: #4F46E5;
+    border: 1px solid #C7D2FE;
+    transition: all 0.2s ease;
+}
+
+.username-gen-badge.generating {
+    background: #FEF3C7;
+    color: #D97706;
+    border-color: #FDE68A;
+}
+
+.username-refresh-btn {
+    border: none;
+    background: transparent;
+    color: #6366F1;
+    cursor: pointer;
+    padding: 0.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    transition: all 0.18s ease;
+}
+
+.username-refresh-btn:hover {
+    background: #EEF2FF;
+    color: #4338CA;
+    transform: rotate(45deg);
+}
+
+.header-profile-edit-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--admin-text-muted);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    margin-left: 0.2rem;
+}
+
+.header-profile-edit-btn:hover {
+    background: rgba(124, 58, 237, 0.12);
+    color: #7C3AED;
+}
+
+.admin-mobile-text {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.825rem;
+    color: #1E293B;
+    background: #F8FAFC;
+    padding: 0.2rem 0.45rem;
+    border-radius: 6px;
+    border: 1px solid #E2E8F0;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+

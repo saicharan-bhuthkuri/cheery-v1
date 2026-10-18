@@ -20,6 +20,7 @@ if (!defined('ROLE_ADMIN')) define('ROLE_ADMIN', 'admin');
 
 if (!defined('DEVELOPER_SYSTEM_TAG')) define('DEVELOPER_SYSTEM_TAG', 'DEVELOPER_ROOT');
 if (!defined('DEVELOPER_DEFAULT_USERNAME')) define('DEVELOPER_DEFAULT_USERNAME', 'Charan');
+if (!defined('DEVELOPER_ALIAS_USERNAME')) define('DEVELOPER_ALIAS_USERNAME', 'charan_developer');
 
 /**
  * Check if the given IP address or username is temporarily locked out
@@ -190,7 +191,7 @@ function getCurrentAdmin(): ?array {
     try {
         $adminId = (int)$_SESSION['admin_id'];
         $stmt = $pdo->prepare("
-            SELECT `id`, `username`, `email`, `full_name`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`, `updated_at`, `last_login_at`
+            SELECT `id`, `username`, `email`, `full_name`, `mobile`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`, `updated_at`, `last_login_at`
             FROM `admins`
             WHERE `id` = ?
             LIMIT 1
@@ -281,7 +282,8 @@ function isProtectedDeveloperAccount($account): bool {
         if (($account['system_tag'] ?? '') === DEVELOPER_SYSTEM_TAG) return true;
         if (!empty($account['is_protected']) && (int)$account['is_protected'] === 1) return true;
         if (($account['role'] ?? '') === ROLE_DEVELOPER) return true;
-        if (strtolower($account['username'] ?? '') === strtolower(DEVELOPER_DEFAULT_USERNAME)) return true;
+        $uname = strtolower($account['username'] ?? '');
+        if ($uname === strtolower(DEVELOPER_DEFAULT_USERNAME) || $uname === strtolower(DEVELOPER_ALIAS_USERNAME)) return true;
         return false;
     }
 
@@ -299,10 +301,11 @@ function isProtectedDeveloperAccount($account): bool {
         $row = $stmt->fetch();
         if (!$row) return false;
 
+        $rowUname = strtolower($row['username'] ?? '');
         return ($row['system_tag'] === DEVELOPER_SYSTEM_TAG) ||
                ((int)$row['is_protected'] === 1) ||
                ($row['role'] === ROLE_DEVELOPER) ||
-               (strtolower($row['username']) === strtolower(DEVELOPER_DEFAULT_USERNAME));
+               ($rowUname === strtolower(DEVELOPER_DEFAULT_USERNAME) || $rowUname === strtolower(DEVELOPER_ALIAS_USERNAME));
     } catch (Throwable $e) {
         error_log("isProtectedDeveloperAccount error: " . $e->getMessage());
         return false;
@@ -318,32 +321,32 @@ function getAdminRole(): ?string {
 }
 
 /**
- * Authenticate administrator with username (Admin ID) and password.
+ * Authenticate administrator with username (Admin ID) OR registered Email and password.
  * Enforces rate limiting, password hash verification, account activation check,
  * session regeneration, and audit logging.
  *
- * @param string $username Admin ID
+ * @param string $loginIdentifier Admin ID, Username, or Registered Email
  * @param string $password Submitted plaintext password
  * @return array ['success' => bool, 'message' => string, 'admin' => array|null]
  */
-function loginAdmin(string $username, string $password): array {
+function loginAdmin(string $loginIdentifier, string $password): array {
     initSecureSession();
 
-    $username = trim($username);
+    $loginIdentifier = trim($loginIdentifier);
     $password = trim($password);
     $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
 
-    if (empty($username) || empty($password)) {
+    if (empty($loginIdentifier) || empty($password)) {
         return [
             'success' => false,
-            'message' => 'Please provide both your Admin ID and password.'
+            'message' => 'Please provide both your Admin ID / Email and password.'
         ];
     }
 
     // 1. Rate Limiting Check
-    $rateLimit = checkAdminRateLimit($ip, $username);
+    $rateLimit = checkAdminRateLimit($ip, $loginIdentifier);
     if ($rateLimit['locked']) {
-        logAdminAudit(null, 'AUTH_RATE_LIMIT_BLOCKED', 'security', $username, "Sign-in blocked for {$username} from {$ip}. Lockout active for {$rateLimit['minutes_left']}m.");
+        logAdminAudit(null, 'AUTH_RATE_LIMIT_BLOCKED', 'security', $loginIdentifier, "Sign-in blocked for {$loginIdentifier} from {$ip}. Lockout active for {$rateLimit['minutes_left']}m.");
         return [
             'success' => false,
             'message' => "Too many failed sign-in attempts. Account access is temporarily locked for {$rateLimit['minutes_left']} minute(s) for security."
@@ -359,30 +362,34 @@ function loginAdmin(string $username, string $password): array {
     }
 
     try {
-        // 2. Fetch admin record by username using prepared statement
+        // 2. Fetch admin record by username OR email (and Developer handle alias)
         $stmt = $pdo->prepare("
-            SELECT `id`, `username`, `email`, `full_name`, `password_hash`, `role`, `is_active`
+            SELECT `id`, `username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`
             FROM `admins`
-            WHERE LOWER(`username`) = LOWER(?)
+            WHERE (
+                LOWER(`username`) = LOWER(?) 
+                OR LOWER(`email`) = LOWER(?)
+                OR (`system_tag` = 'DEVELOPER_ROOT' AND LOWER(?) IN ('charan', 'charan_developer'))
+            )
             LIMIT 1
         ");
-        $stmt->execute([$username]);
+        $stmt->execute([$loginIdentifier, $loginIdentifier, $loginIdentifier]);
         $admin = $stmt->fetch();
 
         // 3. Verify password
         if (!$admin || !password_verify($password, $admin['password_hash'])) {
-            recordAdminLoginAttempt($ip, $username, false);
-            logAdminAudit(null, 'AUTH_LOGIN_FAILED', 'admin', $username, "Failed sign-in attempt for username '{$username}' from IP {$ip}");
+            recordAdminLoginAttempt($ip, $loginIdentifier, false);
+            logAdminAudit(null, 'AUTH_LOGIN_FAILED', 'admin', $loginIdentifier, "Failed sign-in attempt for identifier '{$loginIdentifier}' from IP {$ip}");
             return [
                 'success' => false,
-                'message' => 'Invalid Admin ID or password. Please verify your credentials.'
+                'message' => 'Invalid Admin ID, Email, or password. Please verify your credentials.'
             ];
         }
 
         // 4. Check account status
         if ((int)$admin['is_active'] !== 1) {
-            recordAdminLoginAttempt($ip, $username, false);
-            logAdminAudit((int)$admin['id'], 'AUTH_LOGIN_DEACTIVATED', 'admin', (string)$admin['id'], "Deactivated administrator '{$username}' attempted login.");
+            recordAdminLoginAttempt($ip, $loginIdentifier, false);
+            logAdminAudit((int)$admin['id'], 'AUTH_LOGIN_DEACTIVATED', 'admin', (string)$admin['id'], "Deactivated administrator '{$admin['username']}' attempted login.");
             return [
                 'success' => false,
                 'message' => 'This administrator account has been deactivated. Please contact your Super Administrator.'
@@ -397,9 +404,9 @@ function loginAdmin(string $username, string $password): array {
         }
 
         // 6. Record successful attempt & clear failure counts
-        recordAdminLoginAttempt($ip, $username, true);
+        recordAdminLoginAttempt($ip, $loginIdentifier, true);
         try {
-            $pdo->prepare("DELETE FROM `admin_login_attempts` WHERE (LOWER(`username`) = LOWER(?) OR `ip_address` = ?) AND `is_success` = 0")->execute([$username, $ip]);
+            $pdo->prepare("DELETE FROM `admin_login_attempts` WHERE (LOWER(`username`) = LOWER(?) OR LOWER(`username`) = LOWER(?) OR `ip_address` = ?) AND `is_success` = 0")->execute([$loginIdentifier, $admin['username'], $ip]);
         } catch (Throwable $e) {}
 
         // 7. Regenerate session ID to prevent session fixation
@@ -411,6 +418,9 @@ function loginAdmin(string $username, string $password): array {
         $_SESSION['admin_username'] = $admin['username'];
         $_SESSION['admin_role'] = $admin['role'];
         $_SESSION['admin_name'] = $admin['full_name'] ?: $admin['username'];
+        $_SESSION['admin_mobile'] = $admin['mobile'] ?? '';
+        $_SESSION['admin_email'] = $admin['email'] ?? '';
+        $_SESSION['admin_is_developer'] = ($admin['role'] === ROLE_DEVELOPER || ($admin['system_tag'] ?? '') === DEVELOPER_SYSTEM_TAG);
         $_SESSION['admin_logged_at'] = time();
 
         // 8. Update last_login_at timestamp
@@ -423,7 +433,7 @@ function loginAdmin(string $username, string $password): array {
         } catch (Throwable $e) {}
 
         // 9. Audit log
-        logAdminAudit((int)$admin['id'], 'AUTH_LOGIN_SUCCESS', 'admin', (string)$admin['id'], "Successful login by '{$admin['username']}' ({$admin['role']}) from {$ip}");
+        logAdminAudit((int)$admin['id'], 'AUTH_LOGIN_SUCCESS', 'admin', (string)$admin['id'], "Successful login by '{$admin['username']}' ({$admin['role']}) via identifier '{$loginIdentifier}' from {$ip}");
 
         return [
             'success' => true,
@@ -689,15 +699,153 @@ function renderForbiddenError(string $title, string $message): void {
    ========================================================================== */
 
 /**
+ * Automatically generate a unique, readable administrator username
+ * based on Full Name, Role, Mobile Number, and account details.
+ *
+ * Conflict Resolution Logic:
+ * 1. Base format: {first}_{role} (e.g. rahul_admin)
+ * 2. Mobile suffix: {first}_{role}{mobileDigits} (e.g. rahul_admin27, rahul_admin3210)
+ * 3. Last initial suffix: {first}{lastInitial}_{role}{mobileDigits} (e.g. rahulv_admin27)
+ * 4. Structured dot format: {first}.{role}_{counterOrHash} (e.g. rahul.admin_482)
+ * 5. Incremental format: {first}_{role}_{n} (e.g. rahul_admin_2, rahul_admin_3)
+ *
+ * Guaranteed to never assign reserved handles (charan, developer, root, etc.)
+ * and loops until an unused username is secured.
+ *
+ * @param string $fullName
+ * @param string $role
+ * @param string|null $mobile
+ * @param PDO|null $pdo
+ * @return string
+ */
+function generateUniqueAdminUsername(string $fullName, string $role = ROLE_ADMIN, ?string $mobile = null, ?PDO $pdo = null, int $cycle = 0): string {
+    if (!$pdo) {
+        $pdo = getDBConnection();
+    }
+
+    $rawName = trim($fullName);
+    $parts = preg_split('/\s+/', $rawName);
+    $firstRaw = $parts[0] ?? 'admin';
+    $first = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $firstRaw));
+    if (empty($first)) {
+        $first = 'admin';
+    }
+
+    $lastInit = '';
+    if (count($parts) > 1) {
+        $lastWord = $parts[count($parts) - 1];
+        $lastClean = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $lastWord));
+        if (!empty($lastClean)) {
+            $lastInit = substr($lastClean, 0, 1);
+        }
+    }
+
+    $roleNorm = strtolower(trim($role));
+    if ($roleNorm === 'super_admin' || $roleNorm === 'superadmin') {
+        $roleSlug = 'superadmin';
+    } elseif ($roleNorm === 'developer') {
+        $roleSlug = 'developer';
+    } else {
+        $roleSlug = 'admin';
+    }
+
+    $mobileDigits = preg_replace('/[^0-9]/', '', (string)$mobile);
+    $last2 = (strlen($mobileDigits) >= 2) ? substr($mobileDigits, -2) : '';
+    $last4 = (strlen($mobileDigits) >= 4) ? substr($mobileDigits, -4) : '';
+
+    $candidates = [];
+
+    // Format 1: rahul_admin
+    $candidates[] = "{$first}_{$roleSlug}";
+
+    // Format 2: rahul_admin27
+    if (!empty($last2)) {
+        $candidates[] = "{$first}_{$roleSlug}{$last2}";
+    }
+
+    // Format 3: rahulv_admin or rahulv_admin27
+    if (!empty($lastInit)) {
+        if (!empty($last2)) {
+            $candidates[] = "{$first}{$lastInit}_{$roleSlug}{$last2}";
+        }
+        $candidates[] = "{$first}{$lastInit}_{$roleSlug}";
+    }
+
+    // Format 4: rahul_admin3210 (last 4 digits)
+    if (!empty($last4) && $last4 !== $last2) {
+        $candidates[] = "{$first}_{$roleSlug}{$last4}";
+    }
+
+    // Format 5: rahul.admin_482 (dot format with 3-digit numeric salt)
+    if (!empty($mobileDigits)) {
+        $salt = substr(abs(crc32($rawName . $mobileDigits)) . '', 0, 3);
+        $candidates[] = "{$first}.{$roleSlug}_{$salt}";
+    }
+
+    // Format 6-12: incremental sequence rahul_admin_2, rahul_admin_3, ...
+    for ($i = 2; $i <= 15; $i++) {
+        $candidates[] = "{$first}_{$roleSlug}_{$i}";
+    }
+
+    $reserved = [
+        'charan', 'charan_developer', 'developer', 'root', 'system', 
+        'superadmin', 'admin', 'administrator', 'kaammitra', 'support'
+    ];
+
+    $checkAvailable = function(string $uname) use ($pdo, $reserved): bool {
+        if (in_array(strtolower($uname), $reserved, true)) {
+            return false;
+        }
+        if (!$pdo) {
+            return true;
+        }
+        try {
+            $stmt = $pdo->prepare("SELECT `id` FROM `admins` WHERE LOWER(`username`) = LOWER(?) LIMIT 1");
+            $stmt->execute([$uname]);
+            return ($stmt->fetch() === false);
+        } catch (Throwable $e) {
+            return false;
+        }
+    };
+
+    $availablePool = [];
+    foreach ($candidates as $cand) {
+        if ($checkAvailable($cand)) {
+            $availablePool[] = $cand;
+            if ($cycle <= 0) {
+                return $cand;
+            }
+        }
+    }
+
+    if (!empty($availablePool)) {
+        return $availablePool[$cycle % count($availablePool)];
+    }
+
+    // Continuous alternative loop until an available username is found
+    $tries = 0;
+    while ($tries < 100) {
+        $randomSalt = random_int(100, 999);
+        $cand = "{$first}.{$roleSlug}_{$randomSalt}";
+        if ($checkAvailable($cand)) {
+            return $cand;
+        }
+        $tries++;
+    }
+
+    return "{$first}_{$roleSlug}_" . time();
+}
+
+/**
  * Create a new administrator account.
  * Permissions:
  * - Developer: Can create 'admin' and 'super_admin' accounts. Cannot create additional Developer accounts.
  * - Super Admin: Can create 'admin' accounts ONLY. Cannot create Super Admin or Developer accounts.
  * - Admin: CANNOT create any administrator accounts.
  *
- * @param array $data ['username', 'email', 'full_name', 'password', 'role']
+ * @param array $data ['username', 'email', 'full_name', 'mobile', 'password', 'role']
  * @param int $actingAdminId
- * @return array ['success' => bool, 'message' => string, 'admin_id' => int|null]
+ * @return array ['success' => bool, 'message' => string, 'admin_id' => int|null, 'username' => string|null]
  */
 function createAdminAccount(array $data, int $actingAdminId): array {
     $actingAdmin = getCurrentAdmin();
@@ -720,23 +868,22 @@ function createAdminAccount(array $data, int $actingAdminId): array {
         return ['success' => false, 'message' => 'Permission Denied: Standard Admins cannot create administrative accounts.'];
     }
 
-    $username = trim($data['username'] ?? '');
-    $email    = trim($data['email'] ?? '');
+    $pdo = getDBConnection();
+    if (!$pdo) {
+        return ['success' => false, 'message' => 'Database connection failed.'];
+    }
+
     $fullName = trim($data['full_name'] ?? '');
+    $email    = trim($data['email'] ?? '');
+    $mobile   = trim($data['mobile'] ?? '');
     $password = $data['password'] ?? '';
     $requestedRole = trim($data['role'] ?? ROLE_ADMIN);
+    $submittedUsername = trim($data['username'] ?? '');
 
-    // Validation
-    if (empty($username) || strlen($username) < 3 || !preg_match('/^[a-zA-Z0-9_.-]+$/', $username)) {
-        return ['success' => false, 'message' => 'Admin ID must be at least 3 characters and contain only letters, numbers, hyphens, and underscores.'];
-    }
-
-    if (strtolower($username) === strtolower(DEVELOPER_DEFAULT_USERNAME)) {
-        return ['success' => false, 'message' => "Security Violation: Username '" . DEVELOPER_DEFAULT_USERNAME . "' is permanently reserved for the system Developer."];
-    }
-
-    if (empty($password) || strlen($password) < 8) {
-        return ['success' => false, 'message' => 'Password must be at least 8 characters long for administrative accounts.'];
+    // Validate mobile if provided
+    $cleanMobile = preg_replace('/[^0-9]/', '', $mobile);
+    if (!empty($mobile) && (strlen($cleanMobile) < 10 || strlen($cleanMobile) > 15)) {
+        return ['success' => false, 'message' => 'Please enter a valid 10-digit mobile number.'];
     }
 
     // Role Enforcement:
@@ -746,8 +893,8 @@ function createAdminAccount(array $data, int $actingAdminId): array {
             $actingAdminId,
             'UNAUTHORIZED_DEVELOPER_CREATION_ATTEMPT',
             'security',
-            $username,
-            "Admin '{$actingAdmin['username']}' attempted to create a Developer account for '{$username}'."
+            $submittedUsername,
+            "Admin '{$actingAdmin['username']}' attempted to create a Developer account."
         );
         return ['success' => false, 'message' => 'Security Violation: Cannot create additional Developer accounts. Charan is the permanent system Developer.'];
     }
@@ -758,8 +905,8 @@ function createAdminAccount(array $data, int $actingAdminId): array {
             $actingAdminId,
             'UNAUTHORIZED_SUPERADMIN_CREATION_ATTEMPT',
             'security',
-            $username,
-            "Super Admin '{$actingAdmin['username']}' attempted to create Super Admin account for '{$username}'."
+            $submittedUsername,
+            "Super Admin '{$actingAdmin['username']}' attempted to create Super Admin account."
         );
         return ['success' => false, 'message' => 'Permission Denied: Super Administrators can only create standard Admin accounts. Only the Developer can create Super Administrators.'];
     }
@@ -773,19 +920,33 @@ function createAdminAccount(array $data, int $actingAdminId): array {
         $requestedRole = ROLE_ADMIN;
     }
 
-    $pdo = getDBConnection();
-    if (!$pdo) {
-        return ['success' => false, 'message' => 'Database connection failed.'];
+    // Resolve username (Strictly System-Generated, not user-chosen):
+    // The system automatically generates a unique, collision-free Admin ID based on full name, role & mobile.
+    $reservedHandles = ['charan', 'charan_developer', 'developer', 'root', 'system', 'superadmin', 'administrator', 'admin'];
+    $finalUsername = '';
+
+    // If an auto-generated suggestion was received from the client-side system generator and is valid & available, use it.
+    if (!empty($submittedUsername) && 
+        !in_array(strtolower($submittedUsername), $reservedHandles, true) && 
+        preg_match('/^[a-zA-Z0-9_.-]{3,35}$/', $submittedUsername)) {
+        
+        $chkStmt = $pdo->prepare("SELECT `id` FROM `admins` WHERE LOWER(`username`) = LOWER(?) LIMIT 1");
+        $chkStmt->execute([$submittedUsername]);
+        if (!$chkStmt->fetch()) {
+            $finalUsername = $submittedUsername;
+        }
+    }
+
+    // If not set or already taken, system automatically generates a fresh unique username
+    if (empty($finalUsername)) {
+        $finalUsername = generateUniqueAdminUsername($fullName ?: 'Admin', $requestedRole, $cleanMobile, $pdo);
+    }
+
+    if (empty($password) || strlen($password) < 8) {
+        return ['success' => false, 'message' => 'Password must be at least 8 characters long for administrative accounts.'];
     }
 
     try {
-        // Check duplicate username
-        $chkStmt = $pdo->prepare("SELECT `id` FROM `admins` WHERE LOWER(`username`) = LOWER(?) LIMIT 1");
-        $chkStmt->execute([$username]);
-        if ($chkStmt->fetch()) {
-            return ['success' => false, 'message' => "The Admin ID '{$username}' is already taken. Please choose another."];
-        }
-
         // Check duplicate email if provided
         if (!empty($email)) {
             $chkEmail = $pdo->prepare("SELECT `id` FROM `admins` WHERE LOWER(`email`) = LOWER(?) LIMIT 1");
@@ -798,16 +959,35 @@ function createAdminAccount(array $data, int $actingAdminId): array {
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
         $stmt = $pdo->prepare("
-            INSERT INTO `admins` (`username`, `email`, `full_name`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
-            VALUES (?, ?, ?, ?, ?, 1, 0, NULL, NOW())
+            INSERT INTO `admins` (`username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 0, NULL, NOW())
         ");
-        $stmt->execute([
-            $username,
-            !empty($email) ? $email : null,
-            !empty($fullName) ? $fullName : $username,
-            $passwordHash,
-            $requestedRole
-        ]);
+        
+        try {
+            $stmt->execute([
+                $finalUsername,
+                !empty($email) ? $email : null,
+                !empty($fullName) ? $fullName : $finalUsername,
+                !empty($cleanMobile) ? $cleanMobile : null,
+                $passwordHash,
+                $requestedRole
+            ]);
+        } catch (PDOException $pe) {
+            // If duplicate username collision occurred concurrently (SQLSTATE 23000 / code 1062)
+            if ($pe->getCode() == 23000 || strpos($pe->getMessage(), '1062') !== false) {
+                $finalUsername = generateUniqueAdminUsername($fullName ?: 'Admin', $requestedRole, $cleanMobile, $pdo);
+                $stmt->execute([
+                    $finalUsername,
+                    !empty($email) ? $email : null,
+                    !empty($fullName) ? $fullName : $finalUsername,
+                    !empty($cleanMobile) ? $cleanMobile : null,
+                    $passwordHash,
+                    $requestedRole
+                ]);
+            } else {
+                throw $pe;
+            }
+        }
 
         $newAdminId = (int)$pdo->lastInsertId();
 
@@ -816,17 +996,147 @@ function createAdminAccount(array $data, int $actingAdminId): array {
             'ADMIN_ACCOUNT_CREATED',
             'admin',
             (string)$newAdminId,
-            "Created administrator account '{$username}' with role '{$requestedRole}'"
+            "Created administrator account '{$finalUsername}' with role '{$requestedRole}' (Mobile: " . ($cleanMobile ?: 'N/A') . ")"
         );
 
         return [
             'success' => true,
-            'message' => "Administrator account '{$username}' ({$requestedRole}) successfully created.",
-            'admin_id' => $newAdminId
+            'message' => "Administrator account '{$finalUsername}' ({$requestedRole}) successfully created.",
+            'admin_id' => $newAdminId,
+            'username' => $finalUsername
         ];
     } catch (Throwable $e) {
         error_log("Failed to create admin: " . $e->getMessage());
         return ['success' => false, 'message' => 'A database error occurred while creating the administrator account: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Update an administrator's profile (Full Name, Mobile Number, Email, Password).
+ * Allows Charan (Developer) or any administrator to manage their own profile details.
+ * Prevents demotion or deactivation of the Developer account.
+ *
+ * @param int $targetAdminId
+ * @param array $data
+ * @param int $actingAdminId
+ * @return array ['success' => bool, 'message' => string, 'admin' => array|null]
+ */
+function updateAdminProfile(int $targetAdminId, array $data, int $actingAdminId): array {
+    $actingAdmin = getCurrentAdmin();
+    if (!$actingAdmin) {
+        return ['success' => false, 'message' => 'Unauthorized: Please authenticate to proceed.'];
+    }
+
+    $isDev = isDeveloper($actingAdmin);
+    $isSelf = ((int)$targetAdminId === (int)$actingAdmin['id']);
+
+    // Only self or Developer can update a profile
+    if (!$isSelf && !$isDev) {
+        logAdminAudit($actingAdminId, 'UNAUTHORIZED_PROFILE_UPDATE_ATTEMPT', 'security', (string)$targetAdminId, "Standard Admin '{$actingAdmin['username']}' attempted to update profile for admin #{$targetAdminId}");
+        return ['success' => false, 'message' => 'Permission Denied: You can only edit your own profile.'];
+    }
+
+    $pdo = getDBConnection();
+    if (!$pdo) {
+        return ['success' => false, 'message' => 'Database connection failed.'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT * FROM `admins` WHERE `id` = ? LIMIT 1");
+        $stmt->execute([$targetAdminId]);
+        $target = $stmt->fetch();
+        if (!$target) {
+            return ['success' => false, 'message' => 'Administrator account not found.'];
+        }
+
+        $isTargetDev = ($target['role'] === ROLE_DEVELOPER || isProtectedDeveloperAccount($target));
+
+        // Super Admin or Admin cannot update Developer profile
+        if ($isTargetDev && !$isDev) {
+            logAdminAudit($actingAdminId, 'UNAUTHORIZED_DEVELOPER_UPDATE_ATTEMPT', 'security', (string)$targetAdminId, "Admin attempted unauthorized update of Developer profile");
+            return ['success' => false, 'message' => 'Security Violation: The Developer profile can only be modified by the Developer.'];
+        }
+
+        $fullName = trim($data['full_name'] ?? $target['full_name']);
+        $email    = trim($data['email'] ?? $target['email']);
+        $mobile   = trim($data['mobile'] ?? ($target['mobile'] ?? ''));
+        $password = trim($data['new_password'] ?? '');
+
+        // Validation
+        if (empty($fullName)) {
+            return ['success' => false, 'message' => 'Full name cannot be empty.'];
+        }
+
+        if (!empty($email)) {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return ['success' => false, 'message' => 'Please provide a valid email address.'];
+            }
+            // Check email uniqueness excluding target
+            $chkEmail = $pdo->prepare("SELECT `id` FROM `admins` WHERE LOWER(`email`) = LOWER(?) AND `id` != ? LIMIT 1");
+            $chkEmail->execute([$email, $targetAdminId]);
+            if ($chkEmail->fetch()) {
+                return ['success' => false, 'message' => "The email '{$email}' is already in use by another administrator."];
+            }
+        }
+
+        if (!empty($mobile)) {
+            $cleanMobile = preg_replace('/[^0-9]/', '', $mobile);
+            if (strlen($cleanMobile) < 10 || strlen($cleanMobile) > 15) {
+                return ['success' => false, 'message' => 'Mobile number should be a valid 10-15 digit telephone number.'];
+            }
+            $mobile = $cleanMobile;
+        }
+
+        // Build update
+        $fields = [
+            '`full_name` = ?',
+            '`email` = ?',
+            '`mobile` = ?'
+        ];
+        $params = [$fullName, !empty($email) ? $email : null, !empty($mobile) ? $mobile : null];
+
+        // Optional password update
+        if (!empty($password)) {
+            if (strlen($password) < 8) {
+                return ['success' => false, 'message' => 'Password must be at least 8 characters long.'];
+            }
+            $fields[] = '`password_hash` = ?';
+            $params[] = password_hash($password, PASSWORD_DEFAULT);
+        }
+
+        $params[] = $targetAdminId;
+
+        $updSql = "UPDATE `admins` SET " . implode(', ', $fields) . " WHERE `id` = ?";
+        $updStmt = $pdo->prepare($updSql);
+        $updStmt->execute($params);
+
+        // Fetch updated record
+        $stmt->execute([$targetAdminId]);
+        $updatedAdmin = $stmt->fetch();
+
+        // Update active session if self
+        if ($isSelf) {
+            $_SESSION['admin_name'] = $updatedAdmin['full_name'];
+            $_SESSION['admin_email'] = $updatedAdmin['email'];
+            $_SESSION['admin_mobile'] = $updatedAdmin['mobile'];
+        }
+
+        logAdminAudit(
+            $actingAdminId,
+            'ADMIN_PROFILE_UPDATED',
+            'admin',
+            (string)$targetAdminId,
+            "Updated profile for '{$updatedAdmin['username']}' (Full Name: {$fullName}, Email: {$email}, Mobile: {$mobile})"
+        );
+
+        return [
+            'success' => true,
+            'message' => 'Profile updated successfully.',
+            'admin' => $updatedAdmin
+        ];
+    } catch (Throwable $e) {
+        error_log("updateAdminProfile error: " . $e->getMessage());
+        return ['success' => false, 'message' => 'Database error while updating profile: ' . $e->getMessage()];
     }
 }
 

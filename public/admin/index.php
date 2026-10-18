@@ -70,11 +70,18 @@ function renderAdminTableRow(array $adm, array $currentAdmin, string $csrfToken)
     $isDeveloper   = isDeveloper($currentAdmin);
     $isSuperAdmin  = isSuperAdmin($currentAdmin);
 
-    $searchData = strtolower(htmlspecialchars(($adm['username'] ?? '') . ' ' . ($adm['full_name'] ?? '') . ' ' . ($adm['email'] ?? '') . ' ' . ($adm['role'] ?? '')));
+    $searchData = strtolower(htmlspecialchars(($adm['username'] ?? '') . ' ' . ($adm['full_name'] ?? '') . ' ' . ($adm['email'] ?? '') . ' ' . ($adm['mobile'] ?? '') . ' ' . ($adm['role'] ?? '')));
     $escapedUsername = htmlspecialchars($adm['username'] ?? '');
     $jsEscapedUsername = htmlspecialchars(addslashes($adm['username'] ?? ''));
     $escapedFullName = htmlspecialchars($adm['full_name'] ?: 'N/A');
+    $jsEscapedFullName = htmlspecialchars(addslashes($adm['full_name'] ?: $adm['username'] ?: ''));
     $escapedEmail = htmlspecialchars($adm['email'] ?: 'No email configured');
+    $jsEscapedEmail = htmlspecialchars(addslashes($adm['email'] ?? ''));
+    $rawMobile = $adm['mobile'] ?? '';
+    $jsEscapedMobile = htmlspecialchars(addslashes($rawMobile));
+    $escapedMobile = !empty($rawMobile) 
+        ? '<span class="admin-mobile-text"><i data-lucide="phone" style="width: 12px; height: 12px; color: #6366F1;"></i> ' . htmlspecialchars($rawMobile) . '</span>'
+        : '<span style="color: #94A3B8;">&mdash;</span>';
     $admId = (int)$adm['id'];
     $escapedCsrf = htmlspecialchars($csrfToken);
 
@@ -147,6 +154,9 @@ HTML;
         $actionsHtml = '<span class="badge-protected-root" title="Protected Developer account cannot be deactivated or deleted"><i data-lucide="shield-check" style="width: 13px; height: 13px;"></i><span>Permanent</span></span>';
         if ($isDeveloper && $isSelf) {
             $actionsHtml .= <<<HTML
+<button type="button" class="action-circle-btn action-circle-neutral" onclick="openEditProfileModal({$admId}, '{$jsEscapedFullName}', '{$jsEscapedUsername}', '{$jsEscapedEmail}', '{$jsEscapedMobile}');" title="Edit Developer Profile">
+    <i data-lucide="user-pen" style="width: 14px; height: 14px;"></i>
+</button>
 <form method="POST" onsubmit="var p = prompt('Enter a new password for your Developer account (minimum 8 characters):'); if (!p || p.length < 8) { alert('Password must be at least 8 characters.'); return false; } document.getElementById('pwd_reset_{$admId}').value = p; return true;">
     <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
     <input type="hidden" name="action" value="reset_admin_password">
@@ -270,6 +280,9 @@ HTML;
         <div style="font-size: 0.725rem; color: var(--admin-text-muted);">{$escapedEmail}</div>
     </td>
     <td>
+        {$escapedMobile}
+    </td>
+    <td>
         {$rolePill}
     </td>
     <td>
@@ -359,6 +372,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 } else {
                     $newFullName = trim($_POST['new_full_name'] ?? '');
                     $newUsername = trim($_POST['new_username'] ?? '');
+                    $newMobile   = trim($_POST['mobile'] ?? '');
                     $newEmail    = trim($_POST['new_email'] ?? '');
                     $newPassword = $_POST['new_password'] ?? '';
                     $confirmPassword = $_POST['confirm_password'] ?? '';
@@ -369,12 +383,18 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     if (empty($newFullName)) {
                         $validationErrors[] = "Administrator's Full Name is required.";
                     }
-                    if (empty($newUsername)) {
-                        $validationErrors[] = "Admin ID (Username) is required.";
-                    } elseif (strlen($newUsername) < 3) {
-                        $validationErrors[] = "Admin ID (Username) must be at least 3 characters.";
-                    } elseif (!preg_match('/^[a-zA-Z0-9_.-]+$/', $newUsername)) {
-                        $validationErrors[] = "Admin ID may only contain letters, numbers, underscores, and hyphens.";
+                    if (!empty($newUsername)) {
+                        if (strlen($newUsername) < 3) {
+                            $validationErrors[] = "Admin ID (Username) must be at least 3 characters.";
+                        } elseif (!preg_match('/^[a-zA-Z0-9_.-]+$/', $newUsername)) {
+                            $validationErrors[] = "Admin ID may only contain letters, numbers, underscores, and hyphens.";
+                        }
+                    }
+                    if (!empty($newMobile)) {
+                        $cleanMob = preg_replace('/[^0-9]/', '', $newMobile);
+                        if (strlen($cleanMob) < 10 || strlen($cleanMob) > 15) {
+                            $validationErrors[] = "Please provide a valid 10-digit mobile number.";
+                        }
                     }
                     if (empty($newEmail)) {
                         $validationErrors[] = "Email address is required.";
@@ -405,6 +425,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     $payload = [
                         'username'  => $newUsername,
                         'full_name' => $newFullName,
+                        'mobile'    => $newMobile,
                         'email'     => $newEmail,
                         'password'  => $newPassword,
                         'role'      => $newRole
@@ -434,6 +455,7 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                                     'username' => $newAdminRecord['username'] ?? $newUsername,
                                     'full_name' => $newAdminRecord['full_name'] ?? $newFullName,
                                     'email' => $newAdminRecord['email'] ?? $newEmail,
+                                    'mobile' => $newAdminRecord['mobile'] ?? $newMobile,
                                     'role' => $newAdminRecord['role'] ?? $newRole
                                 ],
                                 'row_html' => $rowHtml,
@@ -503,6 +525,59 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                     $targetId = (int)($_POST['target_id'] ?? 0);
                     $res = deleteAdminAccount($targetId, (int)$currentAdmin['id']);
                     if ($res['success']) { $actionSuccess = $res['message']; } else { $actionError = $res['message']; }
+                }
+                break;
+
+            // REAL-TIME USERNAME AVAILABILITY & SUGGESTION
+            case 'suggest_username':
+                header('Content-Type: application/json');
+                $name   = trim($_POST['full_name'] ?? '');
+                $role   = trim($_POST['role'] ?? 'admin');
+                $mobile = trim($_POST['mobile'] ?? '');
+                $cycle  = max(0, (int)($_POST['cycle'] ?? 0));
+                $suggested = generateUniqueAdminUsername($name ?: 'Admin', $role, $mobile, $pdo, $cycle);
+                
+                $parts = preg_split('/\s+/', $name);
+                $firstClean = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $parts[0] ?? 'admin'));
+                $roleSlug = ($role === 'super_admin' || $role === 'superadmin') ? 'superadmin' : 'admin';
+                $baseCandidate = "{$firstClean}_{$roleSlug}";
+                $hasConflict = (strtolower($suggested) !== strtolower($baseCandidate));
+
+                echo json_encode([
+                    'success' => true,
+                    'username' => $suggested,
+                    'has_conflict' => $hasConflict
+                ]);
+                exit;
+
+            // PROFILE MANAGEMENT: UPDATE CHARAN (DEVELOPER) / SELF
+            case 'update_profile':
+                $targetId = (int)($_POST['target_id'] ?? $currentAdmin['id']);
+                $res = updateAdminProfile($targetId, $_POST, (int)$currentAdmin['id']);
+                if ($isAjax) {
+                    header('Content-Type: application/json');
+                    if ($res['success']) {
+                        echo json_encode([
+                            'success' => true,
+                            'message' => $res['message'],
+                            'admin' => [
+                                'id' => $res['admin']['id'],
+                                'full_name' => $res['admin']['full_name'],
+                                'email' => $res['admin']['email'],
+                                'mobile' => $res['admin']['mobile']
+                            ]
+                        ]);
+                    } else {
+                        http_response_code(400);
+                        echo json_encode(['success' => false, 'message' => $res['message']]);
+                    }
+                    exit;
+                }
+                if ($res['success']) {
+                    $actionSuccess = $res['message'];
+                    $currentAdmin = getCurrentAdmin();
+                } else {
+                    $actionError = $res['message'];
                 }
                 break;
         }
@@ -771,9 +846,12 @@ $csrfToken = getCsrfToken();
                             <?= strtoupper(substr($currentAdmin['username'], 0, 2)); ?>
                         </div>
                         <div class="header-profile-text">
-                            <span class="header-profile-name"><?= htmlspecialchars($adminCleanName); ?></span>
+                            <span class="header-profile-name" id="headerProfileNameDisplay"><?= htmlspecialchars($adminCleanName); ?></span>
                             <span class="header-profile-role" style="<?= $isDeveloper ? 'color: #7C3AED; font-weight: 800;' : ''; ?>"><?= $profileChipRole; ?></span>
                         </div>
+                        <button type="button" class="header-profile-edit-btn" onclick="openEditProfileModal(<?= (int)$currentAdmin['id']; ?>, '<?= htmlspecialchars(addslashes($currentAdmin['full_name'] ?: $currentAdmin['username'])); ?>', '<?= htmlspecialchars(addslashes($currentAdmin['username'])); ?>', '<?= htmlspecialchars(addslashes($currentAdmin['email'] ?? '')); ?>', '<?= htmlspecialchars(addslashes($currentAdmin['mobile'] ?? '')); ?>');" title="Edit Profile Details">
+                            <i data-lucide="user-pen" style="width: 13px; height: 13px;"></i>
+                        </button>
                         <a href="logout.php" class="header-logout-quick" title="Sign out securely">
                             <i data-lucide="log-out" style="width: 13px; height: 13px;"></i>
                         </a>
@@ -2850,6 +2928,7 @@ $csrfToken = getCsrfToken();
                                         <tr>
                                             <th>Admin ID (Username)</th>
                                             <th>Full Name &amp; Email</th>
+                                            <th>Mobile Number</th>
                                             <th>Current Role</th>
                                             <th>Status</th>
                                             <th>Last Login</th>
@@ -2860,7 +2939,7 @@ $csrfToken = getCsrfToken();
                                     <tbody>
                                         <?php if (empty($adminAccounts)): ?>
                                             <tr class="admin-empty-table-row">
-                                                <td colspan="7" style="text-align: center; padding: 2.5rem; color: var(--admin-text-muted);">
+                                                <td colspan="8" style="text-align: center; padding: 2.5rem; color: var(--admin-text-muted);">
                                                     No administrative accounts configured.
                                                 </td>
                                             </tr>
@@ -2911,7 +2990,7 @@ $csrfToken = getCsrfToken();
                                 <input type="hidden" name="ajax" value="1">
 
                                 <div class="admin-modal-body">
-                                    <!-- Row 1: Name and Username -->
+                                    <!-- Row 1: Name and Assigned Role -->
                                     <div class="admin-modal-grid-2">
                                         <div class="admin-form-group">
                                             <label class="admin-form-label" for="modal_admin_name">Administrator's Name *</label>
@@ -2923,26 +3002,64 @@ $csrfToken = getCsrfToken();
                                         </div>
 
                                         <div class="admin-form-group">
-                                            <label class="admin-form-label" for="modal_admin_username">Username / Admin ID *</label>
+                                            <label class="admin-form-label" for="modal_admin_role">Assigned Administrative Role *</label>
+                                            <select name="new_role" id="modal_admin_role" class="admin-form-select" required>
+                                                <option value="admin" selected>Admin (Operational Clearance &mdash; Default)</option>
+                                                <?php if ($isDeveloper): ?>
+                                                    <option value="super_admin">Super Admin (Full Governance &amp; Account Control)</option>
+                                                <?php endif; ?>
+                                            </select>
+                                            <span class="admin-field-hint">
+                                                <?php if ($isDeveloper): ?>
+                                                    Developer grants Super Admin or standard Admin clearance.
+                                                <?php else: ?>
+                                                    Super Administrators can create operational Admin accounts.
+                                                <?php endif; ?>
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Row 2: Mobile Number and Email Address -->
+                                    <div class="admin-modal-grid-2">
+                                        <div class="admin-form-group">
+                                            <label class="admin-form-label" for="modal_admin_mobile">Mobile Number</label>
                                             <div class="admin-input-icon-wrap">
-                                                <i data-lucide="at-sign" class="input-leading-icon"></i>
-                                                <input type="text" name="new_username" id="modal_admin_username" class="admin-form-input with-leading-icon" placeholder="e.g. rahul_admin" required autocomplete="username">
+                                                <i data-lucide="phone" class="input-leading-icon"></i>
+                                                <input type="tel" name="mobile" id="modal_admin_mobile" class="admin-form-input with-leading-icon" placeholder="e.g. 9876543210" pattern="[0-9]{10,15}" autocomplete="tel">
                                             </div>
-                                            <span class="admin-field-hint">Unique login ID (min 3 chars, letters, numbers, _, -)</span>
+                                            <span class="admin-field-hint">Used for 2FA, alerts &amp; smart username suffix</span>
+                                        </div>
+
+                                        <div class="admin-form-group">
+                                            <label class="admin-form-label" for="modal_admin_email">Email Address *</label>
+                                            <div class="admin-input-icon-wrap">
+                                                <i data-lucide="mail" class="input-leading-icon"></i>
+                                                <input type="email" name="new_email" id="modal_admin_email" class="admin-form-input with-leading-icon" placeholder="e.g. rahul@kaammitra.in" required autocomplete="email">
+                                            </div>
+                                            <span class="admin-field-hint">Supports dual login with password</span>
                                         </div>
                                     </div>
 
-                                    <!-- Row 2: Email Address -->
+                                    <!-- Row 3: System-Generated Username / Admin ID -->
                                     <div class="admin-form-group">
-                                        <label class="admin-form-label" for="modal_admin_email">Email Address *</label>
-                                        <div class="admin-input-icon-wrap">
-                                            <i data-lucide="mail" class="input-leading-icon"></i>
-                                            <input type="email" name="new_email" id="modal_admin_email" class="admin-form-input with-leading-icon" placeholder="e.g. rahul@kaammitra.in" required autocomplete="email">
+                                        <div class="username-gen-header">
+                                            <label class="admin-form-label" for="modal_admin_username" style="margin-bottom: 0;">Admin ID / Username <span style="font-size: 0.72rem; font-weight: 600; color: #6366F1; text-transform: uppercase; letter-spacing: 0.03em;">(System Generated)</span></label>
+                                            <span class="username-gen-badge" id="usernameGenBadge" title="Generated automatically by the system and collision-resolved">
+                                                <i data-lucide="cpu" style="width: 11px; height: 11px;"></i>
+                                                <span>System Generated</span>
+                                            </span>
                                         </div>
-                                        <span class="admin-field-hint">Official organization email for system notices</span>
+                                        <div class="admin-input-icon-wrap">
+                                            <i data-lucide="shield-check" class="input-leading-icon" style="color: #6366F1;"></i>
+                                            <input type="text" name="new_username" id="modal_admin_username" class="admin-form-input with-leading-icon with-trailing-action" placeholder="Generated automatically by system..." readonly tabindex="-1" style="background-color: #F8FAFC; color: #1E293B; font-weight: 600; cursor: not-allowed; border-color: #CBD5E1; user-select: all;" autocomplete="off">
+                                            <button type="button" class="input-trailing-toggle username-refresh-btn" id="btnRefreshUsername" onclick="cycleUsernameSuggestion();" title="Cycle to alternative system-generated variation" tabindex="-1">
+                                                <i data-lucide="refresh-cw" style="width: 14px; height: 14px;"></i>
+                                            </button>
+                                        </div>
+                                        <span class="admin-field-hint" style="color: #64748B;">Generated automatically by the system based on full name, role &amp; mobile. Not editable by users.</span>
                                     </div>
 
-                                    <!-- Row 3: Passwords -->
+                                    <!-- Row 4: Passwords -->
                                     <div class="admin-modal-grid-2">
                                         <div class="admin-form-group">
                                             <label class="admin-form-label" for="modal_admin_password">Password *</label>
@@ -2967,24 +3084,6 @@ $csrfToken = getCsrfToken();
                                             </div>
                                             <span class="admin-field-hint">Must match password exactly</span>
                                         </div>
-                                    </div>
-
-                                    <!-- Row 4: Assigned Role Selection -->
-                                    <div class="admin-form-group" style="margin-bottom: 0.25rem;">
-                                        <label class="admin-form-label" for="modal_admin_role">Assigned Administrative Role *</label>
-                                        <select name="new_role" id="modal_admin_role" class="admin-form-select" required>
-                                            <option value="admin" selected>Admin (Operational Clearance — Default)</option>
-                                            <?php if ($isDeveloper): ?>
-                                                <option value="super_admin">Super Admin (Full Governance &amp; Account Control)</option>
-                                            <?php endif; ?>
-                                        </select>
-                                        <span class="admin-field-hint">
-                                            <?php if ($isDeveloper): ?>
-                                                As Developer, you can grant Super Administrator or standard Admin clearance. (Charan is the permanent Developer).
-                                            <?php else: ?>
-                                                Super Administrators can create operational Admin accounts. Creation of Super Administrator accounts is reserved exclusively for the Developer.
-                                            <?php endif; ?>
-                                        </span>
                                     </div>
                                 </div>
 
@@ -3273,6 +3372,117 @@ $csrfToken = getCsrfToken();
     <!-- Global Admin Toast Container -->
     <div id="adminToastContainer" class="admin-toast-container" aria-live="polite"></div>
 
+    <!-- Centered Popup Modal Overlay: Edit Profile Details (Developer / Self) -->
+    <div id="editProfileModal" class="admin-modal-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="editProfileModalTitle">
+        <div class="admin-modal-dialog">
+            <!-- Modal Header -->
+            <div class="admin-modal-header">
+                <div class="admin-modal-header-info">
+                    <div class="admin-modal-icon-badge" style="background: rgba(124, 58, 237, 0.12); color: #7C3AED; box-shadow: 0 2px 6px rgba(124, 58, 237, 0.15);">
+                        <i data-lucide="user-cog" style="width: 20px; height: 20px;"></i>
+                    </div>
+                    <div>
+                        <h3 class="admin-modal-title" id="editProfileModalTitle">Edit Profile &amp; Contact Details</h3>
+                        <p class="admin-modal-subtitle">Update administrator identity, contact information, and security credentials.</p>
+                    </div>
+                </div>
+                <button type="button" class="admin-modal-close" onclick="closeEditProfileModal();" aria-label="Close modal">&times;</button>
+            </div>
+
+            <!-- Inline Feedback Alerts -->
+            <div class="admin-modal-alerts-container">
+                <div id="modalProfileErrorAlert" class="admin-modal-alert admin-modal-alert-danger" style="display: none;">
+                    <i data-lucide="alert-circle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+                    <div class="modal-alert-text" id="modalProfileErrorText"></div>
+                </div>
+                <div id="modalProfileSuccessAlert" class="admin-modal-alert admin-modal-alert-success" style="display: none;">
+                    <i data-lucide="check-circle-2" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+                    <div class="modal-alert-text" id="modalProfileSuccessText"></div>
+                </div>
+            </div>
+
+            <!-- Modal Form Body -->
+            <form id="editProfileModalForm" onsubmit="handleEditProfileModalSubmit(event);" novalidate>
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
+                <input type="hidden" name="action" value="update_profile">
+                <input type="hidden" name="ajax" value="1">
+                <input type="hidden" name="target_id" id="modal_profile_target_id" value="<?= (int)$currentAdmin['id']; ?>">
+
+                <div class="admin-modal-body">
+                    <!-- Row 1: Name and Role/Username -->
+                    <div class="admin-modal-grid-2">
+                        <div class="admin-form-group">
+                            <label class="admin-form-label" for="modal_profile_name">Full Name *</label>
+                            <div class="admin-input-icon-wrap">
+                                <i data-lucide="user" class="input-leading-icon"></i>
+                                <input type="text" name="full_name" id="modal_profile_name" class="admin-form-input with-leading-icon" value="<?= htmlspecialchars($currentAdmin['full_name'] ?: $currentAdmin['username']); ?>" required autocomplete="name">
+                            </div>
+                            <span class="admin-field-hint">Your display name across the platform</span>
+                        </div>
+
+                        <div class="admin-form-group">
+                            <label class="admin-form-label">System Handle &amp; Clearance</label>
+                            <div style="display: flex; gap: 0.5rem; align-items: center; padding: 0.65rem 0.85rem; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; font-size: 0.825rem;">
+                                <strong style="color: #1E293B;" id="modal_profile_username_display"><?= htmlspecialchars($currentAdmin['username']); ?></strong>
+                                <?php if ($isDeveloper): ?>
+                                    <span class="status-pill status-developer" style="font-size: 0.7rem; padding: 0.15rem 0.5rem;"><i data-lucide="crown" style="width: 10px; height: 10px;"></i> Developer</span>
+                                <?php elseif ($isSuperAdmin): ?>
+                                    <span class="status-pill status-super-admin" style="font-size: 0.7rem; padding: 0.15rem 0.5rem;">Super Admin</span>
+                                <?php else: ?>
+                                    <span class="status-pill status-admin" style="font-size: 0.7rem; padding: 0.15rem 0.5rem;">Admin</span>
+                                <?php endif; ?>
+                            </div>
+                            <span class="admin-field-hint">Sign-in handles: <?= htmlspecialchars($currentAdmin['username']); ?><?= $isDeveloper ? ' &bull; charan_developer' : ''; ?></span>
+                        </div>
+                    </div>
+
+                    <!-- Row 2: Mobile Number & Email Address -->
+                    <div class="admin-modal-grid-2">
+                        <div class="admin-form-group">
+                            <label class="admin-form-label" for="modal_profile_mobile">Mobile Number *</label>
+                            <div class="admin-input-icon-wrap">
+                                <i data-lucide="phone" class="input-leading-icon"></i>
+                                <input type="tel" name="mobile" id="modal_profile_mobile" class="admin-form-input with-leading-icon" placeholder="e.g. 9876543210" value="<?= htmlspecialchars($currentAdmin['mobile'] ?? ''); ?>" required pattern="[0-9]{10,15}" autocomplete="tel">
+                            </div>
+                            <span class="admin-field-hint">10-digit mobile for authentication &amp; notices</span>
+                        </div>
+
+                        <div class="admin-form-group">
+                            <label class="admin-form-label" for="modal_profile_email">Registered Email *</label>
+                            <div class="admin-input-icon-wrap">
+                                <i data-lucide="mail" class="input-leading-icon"></i>
+                                <input type="email" name="email" id="modal_profile_email" class="admin-form-input with-leading-icon" placeholder="e.g. charan@kaammitra.in" value="<?= htmlspecialchars($currentAdmin['email'] ?? ''); ?>" required autocomplete="email">
+                            </div>
+                            <span class="admin-field-hint">Used for flexible dual sign-in</span>
+                        </div>
+                    </div>
+
+                    <!-- Row 3: New Password (Optional) -->
+                    <div class="admin-form-group" style="margin-bottom: 0.25rem;">
+                        <label class="admin-form-label" for="modal_profile_password">New Password (Leave blank to keep current password)</label>
+                        <div class="admin-input-icon-wrap">
+                            <i data-lucide="lock" class="input-leading-icon"></i>
+                            <input type="password" name="new_password" id="modal_profile_password" class="admin-form-input with-leading-icon with-trailing-action" placeholder="Min 8 characters (optional)" minlength="8" autocomplete="new-password">
+                            <button type="button" class="input-trailing-toggle" onclick="togglePasswordVisibility('modal_profile_password', this);" title="Show/Hide Password" tabindex="-1">
+                                <i data-lucide="eye" style="width: 15px; height: 15px;"></i>
+                            </button>
+                        </div>
+                        <span class="admin-field-hint">Only specify if you wish to reset your administrative password</span>
+                    </div>
+                </div>
+
+                <!-- Modal Footer -->
+                <div class="admin-modal-footer">
+                    <button type="button" class="btn-modal-cancel" onclick="closeEditProfileModal();">Cancel</button>
+                    <button type="submit" class="toolbar-btn-primary btn-modal-submit" id="saveProfileSubmitBtn" style="background: linear-gradient(135deg, #7C3AED, #4F46E5);">
+                        <i data-lucide="save" style="width: 16px; height: 16px;"></i>
+                        <span>Save Profile Changes</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- =============================================================
          INTERACTIVE BEHAVIOR & LOGIC
          ============================================================= -->
@@ -3323,6 +3533,84 @@ $csrfToken = getCsrfToken();
             document.body.style.overflow = '';
         }
 
+        // Real-Time Username Auto-Generation & Collision Resolution
+        let usernameDebounceTimer = null;
+        let usernameCycleCounter = 0;
+
+        function triggerUsernameAutoGeneration(forceCycle = false) {
+            clearTimeout(usernameDebounceTimer);
+            usernameDebounceTimer = setTimeout(async () => {
+                const nameEl = document.getElementById('modal_admin_name');
+                const roleEl = document.getElementById('modal_admin_role');
+                const mobileEl = document.getElementById('modal_admin_mobile');
+                const userEl = document.getElementById('modal_admin_username');
+                const badge = document.getElementById('usernameGenBadge');
+                const cycleBtn = document.getElementById('btnRefreshUsername');
+
+                if (!nameEl || !userEl) return;
+                const fullName = nameEl.value.trim();
+                const role = roleEl ? roleEl.value : 'admin';
+                const mobile = mobileEl ? mobileEl.value.trim() : '';
+
+                if (fullName.length < 2) {
+                    if (badge) {
+                        badge.textContent = 'Auto-Generated';
+                        badge.style.opacity = '0.6';
+                    }
+                    return;
+                }
+
+                if (badge) {
+                    badge.textContent = forceCycle ? 'Cycling...' : 'Generating...';
+                    badge.style.opacity = '0.7';
+                }
+                if (cycleBtn) {
+                    cycleBtn.classList.add('spinning');
+                }
+
+                try {
+                    const formData = new FormData();
+                    formData.append('action', 'suggest_username');
+                    formData.append('ajax', '1');
+                    formData.append('full_name', fullName);
+                    formData.append('role', role);
+                    formData.append('mobile', mobile);
+                    if (forceCycle) {
+                        usernameCycleCounter++;
+                        formData.append('cycle', usernameCycleCounter);
+                    }
+
+                    const res = await fetch('index.php?tab=admins', {
+                        method: 'POST',
+                        body: formData,
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Accept': 'application/json'
+                        }
+                    });
+
+                    const data = await res.json();
+                    if (data.success && data.username) {
+                        userEl.value = data.username;
+                        if (badge) {
+                            badge.textContent = data.has_conflict ? 'Collision Resolved' : 'Auto-Generated';
+                            badge.style.opacity = '1';
+                        }
+                    }
+                } catch (err) {
+                    console.error('Username auto-generation error:', err);
+                } finally {
+                    if (cycleBtn) {
+                        cycleBtn.classList.remove('spinning');
+                    }
+                }
+            }, forceCycle ? 0 : 250);
+        }
+
+        function cycleUsernameSuggestion() {
+            triggerUsernameAutoGeneration(true);
+        }
+
         function togglePasswordVisibility(inputId, btn) {
             const input = document.getElementById(inputId);
             if (!input || !btn) return;
@@ -3352,12 +3640,14 @@ $csrfToken = getCsrfToken();
             const nameEl = document.getElementById('modal_admin_name');
             const userEl = document.getElementById('modal_admin_username');
             const emailEl = document.getElementById('modal_admin_email');
+            const mobileEl = document.getElementById('modal_admin_mobile');
             const pwdEl = document.getElementById('modal_admin_password');
             const confirmEl = document.getElementById('modal_admin_confirm_password');
 
             const fullName = (nameEl ? nameEl.value : '').trim();
             const username = (userEl ? userEl.value : '').trim();
             const email = (emailEl ? emailEl.value : '').trim();
+            const mobile = (mobileEl ? mobileEl.value : '').trim();
             const password = pwdEl ? pwdEl.value : '';
             const confirmPassword = confirmEl ? confirmEl.value : '';
 
@@ -3375,16 +3665,8 @@ $csrfToken = getCsrfToken();
                 showModalError("Please enter the administrator's full name.", nameEl);
                 return false;
             }
-            if (!username) {
-                showModalError("Please enter an Admin ID (username).", userEl);
-                return false;
-            }
-            if (username.length < 3) {
-                showModalError("Admin ID (username) must be at least 3 characters long.", userEl);
-                return false;
-            }
-            if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
-                showModalError("Admin ID may only contain letters, numbers, underscores, and hyphens.", userEl);
+            if (fullName.length < 2) {
+                showModalError("Administrator full name must be at least 2 characters.", nameEl);
                 return false;
             }
             if (!email) {
@@ -3394,6 +3676,10 @@ $csrfToken = getCsrfToken();
             const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
             if (!emailRegex.test(email)) {
                 showModalError("Please enter a valid email address.", emailEl);
+                return false;
+            }
+            if (mobile && !/^[0-9]{10,15}$/.test(mobile.replace(/[\s+-]/g, ''))) {
+                showModalError("Please enter a valid 10 to 15 digit mobile number.", mobileEl);
                 return false;
             }
             if (!password) {
@@ -3511,6 +3797,170 @@ $csrfToken = getCsrfToken();
             }
         }
 
+        // =============================================================
+        // EDIT PROFILE MODAL (DEVELOPER CHARAN / SELF PROFILE UPDATES)
+        // =============================================================
+        function openEditProfileModal(adminId, fullName, username, email, mobile) {
+            const modal = document.getElementById('editProfileModal');
+            if (!modal) return;
+
+            // Reset alerts
+            const errAlert = document.getElementById('modalProfileErrorAlert');
+            const succAlert = document.getElementById('modalProfileSuccessAlert');
+            if (errAlert) errAlert.style.display = 'none';
+            if (succAlert) succAlert.style.display = 'none';
+
+            // Populate form values
+            const targetIdInput = document.getElementById('modal_profile_target_id');
+            const nameInput = document.getElementById('modal_profile_name');
+            const userDisplay = document.getElementById('modal_profile_username_display');
+            const emailInput = document.getElementById('modal_profile_email');
+            const mobileInput = document.getElementById('modal_profile_mobile');
+            const pwdInput = document.getElementById('modal_profile_password');
+
+            if (targetIdInput) targetIdInput.value = adminId || '';
+            if (nameInput) nameInput.value = fullName || '';
+            if (userDisplay) userDisplay.textContent = username || '';
+            if (emailInput) emailInput.value = email || '';
+            if (mobileInput) mobileInput.value = mobile || '';
+            if (pwdInput) pwdInput.value = '';
+
+            modal.classList.add('active');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+
+            setTimeout(() => {
+                if (nameInput) nameInput.focus();
+            }, 120);
+        }
+
+        function closeEditProfileModal() {
+            const modal = document.getElementById('editProfileModal');
+            if (!modal) return;
+
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        async function handleEditProfileModalSubmit(e) {
+            e.preventDefault();
+            const form = document.getElementById('editProfileModalForm');
+            const errAlert = document.getElementById('modalProfileErrorAlert');
+            const errText = document.getElementById('modalProfileErrorText');
+            const succAlert = document.getElementById('modalProfileSuccessAlert');
+            const succText = document.getElementById('modalProfileSuccessText');
+            const submitBtn = document.getElementById('saveProfileSubmitBtn');
+
+            if (errAlert) errAlert.style.display = 'none';
+            if (succAlert) succAlert.style.display = 'none';
+
+            const nameEl = document.getElementById('modal_profile_name');
+            const emailEl = document.getElementById('modal_profile_email');
+            const mobileEl = document.getElementById('modal_profile_mobile');
+            const pwdEl = document.getElementById('modal_profile_password');
+
+            const fullName = (nameEl ? nameEl.value : '').trim();
+            const email = (emailEl ? emailEl.value : '').trim();
+            const mobile = (mobileEl ? mobileEl.value : '').trim();
+            const newPassword = pwdEl ? pwdEl.value : '';
+
+            const showProfileError = (msg, inputToFocus) => {
+                if (errText) errText.textContent = msg;
+                if (errAlert) {
+                    errAlert.style.display = 'flex';
+                    errAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+                if (inputToFocus) inputToFocus.focus();
+            };
+
+            if (!fullName) {
+                showProfileError("Please enter your full name.", nameEl);
+                return false;
+            }
+            if (!email) {
+                showProfileError("Please enter your registered email address.", emailEl);
+                return false;
+            }
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showProfileError("Please enter a valid email address.", emailEl);
+                return false;
+            }
+            if (!mobile) {
+                showProfileError("Please enter a valid mobile number.", mobileEl);
+                return false;
+            }
+            if (!/^[0-9]{10,15}$/.test(mobile.replace(/[\s+-]/g, ''))) {
+                showProfileError("Please enter a valid 10-15 digit mobile number.", mobileEl);
+                return false;
+            }
+            if (newPassword && newPassword.length < 8) {
+                showProfileError("New password must be at least 8 characters long.", pwdEl);
+                return false;
+            }
+
+            const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i data-lucide="loader-2" class="spin-icon" style="width: 16px; height: 16px;"></i><span>Saving Changes...</span>';
+                if (window.lucide && lucide.createIcons) lucide.createIcons();
+            }
+
+            try {
+                const formData = new FormData(form);
+                formData.set('ajax', '1');
+
+                const response = await fetch('index.php?tab=admins', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // Update table row if present
+                    if (data.admin && data.admin.id) {
+                        const targetRow = document.getElementById('admin_row_' + data.admin.id);
+                        if (targetRow) {
+                            const nameCell = targetRow.querySelector('td:nth-child(2)');
+                            if (nameCell) {
+                                nameCell.innerHTML = `<div>${data.admin.full_name}</div><div style="font-size: 0.725rem; color: var(--admin-text-muted);">${data.admin.email}</div>`;
+                            }
+                            const mobileCell = targetRow.querySelector('td:nth-child(3)');
+                            if (mobileCell) {
+                                mobileCell.innerHTML = `<span class="admin-mobile-text">${data.admin.mobile || '—'}</span>`;
+                            }
+                        }
+                    }
+
+                    // Update header if updating own profile
+                    const headerNameEl = document.getElementById('headerAdminUserName');
+                    if (headerNameEl && data.admin && data.admin.full_name) {
+                        headerNameEl.textContent = data.admin.full_name;
+                    }
+
+                    closeEditProfileModal();
+                    showAdminToast('success', data.message || 'Administrator profile successfully updated!');
+                } else {
+                    showProfileError(data.message || 'Failed to update profile.');
+                }
+            } catch (err) {
+                showProfileError('A network or server error occurred while saving profile changes.');
+                console.error('Update Profile error:', err);
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnHtml;
+                    if (window.lucide && lucide.createIcons) lucide.createIcons();
+                }
+            }
+        }
+
         // Floating Toast Notification
         function showAdminToast(type, message) {
             let container = document.getElementById('adminToastContainer');
@@ -3542,21 +3992,49 @@ $csrfToken = getCsrfToken();
         // Global Modal Keyboard & Backdrop Listeners
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                const modal = document.getElementById('createAdminModal');
-                if (modal && modal.classList.contains('active')) {
+                const createModal = document.getElementById('createAdminModal');
+                if (createModal && createModal.classList.contains('active')) {
                     closeCreateAdminModal();
+                }
+                const editModal = document.getElementById('editProfileModal');
+                if (editModal && editModal.classList.contains('active')) {
+                    closeEditProfileModal();
                 }
             }
         });
 
         document.addEventListener('DOMContentLoaded', () => {
-            const modal = document.getElementById('createAdminModal');
-            if (modal) {
-                modal.addEventListener('click', (e) => {
-                    if (e.target === modal) {
+            const createModal = document.getElementById('createAdminModal');
+            if (createModal) {
+                createModal.addEventListener('click', (e) => {
+                    if (e.target === createModal) {
                         closeCreateAdminModal();
                     }
                 });
+            }
+
+            const editModal = document.getElementById('editProfileModal');
+            if (editModal) {
+                editModal.addEventListener('click', (e) => {
+                    if (e.target === editModal) {
+                        closeEditProfileModal();
+                    }
+                });
+            }
+
+            // Real-time username generation event bindings
+            const adminNameInput = document.getElementById('modal_admin_name');
+            const adminRoleSelect = document.getElementById('modal_admin_role');
+            const adminMobileInput = document.getElementById('modal_admin_mobile');
+
+            if (adminNameInput) {
+                adminNameInput.addEventListener('input', () => triggerUsernameAutoGeneration(false));
+            }
+            if (adminRoleSelect) {
+                adminRoleSelect.addEventListener('change', () => triggerUsernameAutoGeneration(false));
+            }
+            if (adminMobileInput) {
+                adminMobileInput.addEventListener('input', () => triggerUsernameAutoGeneration(false));
             }
         });
 

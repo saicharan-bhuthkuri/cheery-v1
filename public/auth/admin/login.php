@@ -169,9 +169,9 @@ $csrfToken = getCsrfToken();
                         <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
                         <input type="hidden" name="redirect" value="<?= htmlspecialchars($redirect); ?>">
 
-                        <!-- Admin ID Field -->
+                        <!-- Admin ID or Email Field -->
                         <div class="form-group">
-                            <label class="form-label" for="adminUsername">Admin ID / Username</label>
+                            <label class="form-label" for="adminUsername">Admin ID, Username, or Registered Email</label>
                             <div class="input-icon-wrap">
                                 <span class="input-icon-left">
                                     <i data-lucide="user-check" style="width: 18px; height: 18px;"></i>
@@ -181,7 +181,7 @@ $csrfToken = getCsrfToken();
                                     id="adminUsername" 
                                     name="username" 
                                     class="input-control" 
-                                    placeholder="Enter your Admin ID"
+                                    placeholder="e.g. rahul_admin27 or rahul@kaammitra.in"
                                     value="<?= htmlspecialchars($_POST['username'] ?? ''); ?>"
                                     required 
                                     autocomplete="username"

@@ -119,6 +119,7 @@ function ensureDatabaseSchema(PDO $pdo): void {
                 `username` VARCHAR(50) NOT NULL UNIQUE,
                 `email` VARCHAR(150) DEFAULT NULL,
                 `full_name` VARCHAR(150) DEFAULT NULL,
+                `mobile` VARCHAR(20) DEFAULT NULL,
                 `password_hash` VARCHAR(255) NOT NULL,
                 `role` VARCHAR(50) NOT NULL DEFAULT 'admin',
                 `is_active` TINYINT(1) NOT NULL DEFAULT 1,
@@ -127,7 +128,8 @@ function ensureDatabaseSchema(PDO $pdo): void {
                 `last_login_at` DATETIME DEFAULT NULL,
                 INDEX (`username`),
                 INDEX (`role`),
-                INDEX (`is_active`)
+                INDEX (`is_active`),
+                INDEX (`mobile`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         ");
 
@@ -174,6 +176,7 @@ function ensureDatabaseSchema(PDO $pdo): void {
                 'terms_accepted_at' => "DATETIME DEFAULT NULL"
             ],
             'admins' => [
+                'mobile' => "VARCHAR(20) NULL DEFAULT NULL",
                 'last_login_at' => "DATETIME DEFAULT NULL",
                 'role' => "VARCHAR(50) NOT NULL DEFAULT 'admin'",
                 'is_active' => "TINYINT(1) NOT NULL DEFAULT 1",
@@ -217,18 +220,19 @@ function ensureDatabaseSchema(PDO $pdo): void {
         // 7. Initial Protected Developer Account Setup (Charan)
         // Charan is the default immutable Developer of the system.
         try {
-            $checkCharan = $pdo->prepare("SELECT `id`, `role`, `is_protected`, `system_tag` FROM `admins` WHERE LOWER(`username`) = 'charan' OR `system_tag` = 'DEVELOPER_ROOT' LIMIT 1");
+            $checkCharan = $pdo->prepare("SELECT `id`, `role`, `is_protected`, `system_tag`, `mobile` FROM `admins` WHERE LOWER(`username`) IN ('charan', 'charan_developer') OR `system_tag` = 'DEVELOPER_ROOT' LIMIT 1");
             $checkCharan->execute();
             $charanRow = $checkCharan->fetch();
             if ($charanRow) {
-                // Ensure Charan has developer role and immutable developer flags
+                // Ensure Charan has developer role, immutable developer flags, and valid mobile
                 $updCharan = $pdo->prepare("
                     UPDATE `admins` 
                     SET `role` = 'developer',
                         `is_protected` = 1,
                         `system_tag` = 'DEVELOPER_ROOT',
                         `is_active` = 1,
-                        `full_name` = IF(`full_name` IS NULL OR `full_name` = '' OR `full_name` = 'Charan (Super Admin)', 'Charan (Developer)', `full_name`)
+                        `full_name` = IF(`full_name` IS NULL OR `full_name` = '' OR `full_name` = 'Charan (Super Admin)', 'Charan (Developer)', `full_name`),
+                        `mobile` = IF(`mobile` IS NULL OR `mobile` = '', '9876543210', `mobile`)
                     WHERE `id` = ?
                 ");
                 $updCharan->execute([$charanRow['id']]);
@@ -236,10 +240,10 @@ function ensureDatabaseSchema(PDO $pdo): void {
                 $initPass = getenv('INITIAL_SUPERADMIN_PASSWORD') ?: 'Admin@KaamMitra2025';
                 $initialHash = password_hash($initPass, PASSWORD_DEFAULT);
                 $initStmt = $pdo->prepare("
-                    INSERT INTO `admins` (`username`, `email`, `full_name`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
-                    VALUES (?, ?, ?, ?, 'developer', 1, 1, 'DEVELOPER_ROOT', NOW())
+                    INSERT INTO `admins` (`username`, `email`, `full_name`, `mobile`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
+                    VALUES (?, ?, ?, ?, ?, 'developer', 1, 1, 'DEVELOPER_ROOT', NOW())
                 ");
-                $initStmt->execute(['Charan', 'charan@kaammitra.in', 'Charan (Developer)', $initialHash]);
+                $initStmt->execute(['Charan', 'charan@kaammitra.in', 'Charan (Developer)', '9876543210', $initialHash]);
             }
         } catch (Throwable $e) {
             error_log("Failed to seed/verify initial Developer Charan: " . $e->getMessage());
@@ -253,7 +257,7 @@ function ensureDatabaseSchema(PDO $pdo): void {
                 BEFORE DELETE ON `admins`
                 FOR EACH ROW
                 BEGIN
-                    IF (OLD.role = 'developer' OR OLD.is_protected = 1 OR OLD.system_tag = 'DEVELOPER_ROOT' OR LOWER(OLD.username) = 'charan') THEN
+                    IF (OLD.role = 'developer' OR OLD.is_protected = 1 OR OLD.system_tag = 'DEVELOPER_ROOT' OR LOWER(OLD.username) IN ('charan', 'charan_developer')) THEN
                         SIGNAL SQLSTATE '45000'
                         SET MESSAGE_TEXT = 'Security Violation: The system Developer account is immutable and cannot be deleted or removed.';
                     END IF;
@@ -267,7 +271,7 @@ function ensureDatabaseSchema(PDO $pdo): void {
                 FOR EACH ROW
                 BEGIN
                     -- Protect the developer account from demotion, deactivation, or unprotecting
-                    IF (OLD.role = 'developer' OR OLD.is_protected = 1 OR OLD.system_tag = 'DEVELOPER_ROOT' OR LOWER(OLD.username) = 'charan') THEN
+                    IF (OLD.role = 'developer' OR OLD.is_protected = 1 OR OLD.system_tag = 'DEVELOPER_ROOT' OR LOWER(OLD.username) IN ('charan', 'charan_developer')) THEN
                         IF NEW.role != 'developer' THEN
                             SIGNAL SQLSTATE '45000'
                             SET MESSAGE_TEXT = 'Security Violation: The Developer role cannot be demoted or modified.';
@@ -284,14 +288,14 @@ function ensureDatabaseSchema(PDO $pdo): void {
                             SIGNAL SQLSTATE '45000'
                             SET MESSAGE_TEXT = 'Security Violation: Developer system identifier is immutable.';
                         END IF;
-                        IF LOWER(NEW.username) != 'charan' THEN
+                        IF LOWER(NEW.username) NOT IN ('charan', 'charan_developer') THEN
                             SIGNAL SQLSTATE '45000'
-                            SET MESSAGE_TEXT = 'Security Violation: Developer username cannot be altered.';
+                            SET MESSAGE_TEXT = 'Security Violation: Developer username is restricted to authorized developer handles.';
                         END IF;
                     END IF;
 
                     -- Prevent other accounts from acquiring developer role or DEVELOPER_ROOT system tag
-                    IF (OLD.system_tag IS NULL OR OLD.system_tag != 'DEVELOPER_ROOT') AND LOWER(OLD.username) != 'charan' THEN
+                    IF (OLD.system_tag IS NULL OR OLD.system_tag != 'DEVELOPER_ROOT') AND LOWER(OLD.username) NOT IN ('charan', 'charan_developer') THEN
                         IF NEW.system_tag = 'DEVELOPER_ROOT' THEN
                             SIGNAL SQLSTATE '45000'
                             SET MESSAGE_TEXT = 'Security Violation: Cannot assign DEVELOPER_ROOT system identifier to another account.';
@@ -304,7 +308,7 @@ function ensureDatabaseSchema(PDO $pdo): void {
                             SIGNAL SQLSTATE '45000'
                             SET MESSAGE_TEXT = 'Security Violation: Protected status is reserved for the system Developer.';
                         END IF;
-                        IF LOWER(NEW.username) = 'charan' THEN
+                        IF LOWER(NEW.username) IN ('charan', 'charan_developer') THEN
                             SIGNAL SQLSTATE '45000'
                             SET MESSAGE_TEXT = 'Security Violation: Developer username is reserved.';
                         END IF;
