@@ -111,7 +111,7 @@ $csrfToken = getCsrfToken();
                         </div>
                         <div class="admin-feature-info">
                             <h4 class="admin-feature-title">Role-Based Access Control (RBAC)</h4>
-                            <p class="admin-feature-desc">Dual-tier governance separating Super Admin system control from standard operational management.</p>
+                            <p class="admin-feature-desc">Three-tier architecture: Developer (Root Governance), Super Administrator, and Operational Administrator.</p>
                         </div>
                     </div>
 

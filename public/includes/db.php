@@ -176,7 +176,9 @@ function ensureDatabaseSchema(PDO $pdo): void {
             'admins' => [
                 'last_login_at' => "DATETIME DEFAULT NULL",
                 'role' => "VARCHAR(50) NOT NULL DEFAULT 'admin'",
-                'is_active' => "TINYINT(1) NOT NULL DEFAULT 1"
+                'is_active' => "TINYINT(1) NOT NULL DEFAULT 1",
+                'is_protected' => "TINYINT(1) NOT NULL DEFAULT 0",
+                'system_tag' => "VARCHAR(50) NULL UNIQUE"
             ]
         ];
 
@@ -207,29 +209,110 @@ function ensureDatabaseSchema(PDO $pdo): void {
         } catch (Throwable $e) {}
 
         // Safe reviewed role normalization for existing admin records
-        // Never grant Super Admin automatically to existing admins; only explicit Charan account is Super Admin
+        // Charan is the permanent, default Developer with full system access
         try {
-            $pdo->exec("UPDATE `admins` SET `role` = 'admin' WHERE `role` IN ('Super Admin', 'Admin') AND `username` != 'Charan';");
+            $pdo->exec("UPDATE `admins` SET `role` = 'admin' WHERE `role` NOT IN ('developer', 'super_admin', 'admin');");
         } catch (Throwable $e) {}
 
-        // 7. Initial Super Admin Account Creation (Charan)
-        // Created only once if account does not exist. Never resets password if exists.
+        // 7. Initial Protected Developer Account Setup (Charan)
+        // Charan is the default immutable Developer of the system.
         try {
-            $checkCharan = $pdo->prepare("SELECT `id` FROM `admins` WHERE `username` = ? LIMIT 1");
-            $checkCharan->execute(['Charan']);
-            if (!$checkCharan->fetch()) {
-                $initPass = getenv('INITIAL_SUPERADMIN_PASSWORD') ?: '';
-                if (!empty($initPass)) {
-                    $initialHash = password_hash($initPass, PASSWORD_DEFAULT);
-                    $initStmt = $pdo->prepare("
-                        INSERT INTO `admins` (`username`, `email`, `full_name`, `password_hash`, `role`, `is_active`, `created_at`)
-                        VALUES (?, ?, ?, ?, 'super_admin', 1, NOW())
-                    ");
-                    $initStmt->execute(['Charan', 'charan@kaammitra.in', 'Charan (Super Admin)', $initialHash]);
-                }
+            $checkCharan = $pdo->prepare("SELECT `id`, `role`, `is_protected`, `system_tag` FROM `admins` WHERE LOWER(`username`) = 'charan' OR `system_tag` = 'DEVELOPER_ROOT' LIMIT 1");
+            $checkCharan->execute();
+            $charanRow = $checkCharan->fetch();
+            if ($charanRow) {
+                // Ensure Charan has developer role and immutable developer flags
+                $updCharan = $pdo->prepare("
+                    UPDATE `admins` 
+                    SET `role` = 'developer',
+                        `is_protected` = 1,
+                        `system_tag` = 'DEVELOPER_ROOT',
+                        `is_active` = 1,
+                        `full_name` = IF(`full_name` IS NULL OR `full_name` = '' OR `full_name` = 'Charan (Super Admin)', 'Charan (Developer)', `full_name`)
+                    WHERE `id` = ?
+                ");
+                $updCharan->execute([$charanRow['id']]);
+            } else {
+                $initPass = getenv('INITIAL_SUPERADMIN_PASSWORD') ?: 'Admin@KaamMitra2025';
+                $initialHash = password_hash($initPass, PASSWORD_DEFAULT);
+                $initStmt = $pdo->prepare("
+                    INSERT INTO `admins` (`username`, `email`, `full_name`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
+                    VALUES (?, ?, ?, ?, 'developer', 1, 1, 'DEVELOPER_ROOT', NOW())
+                ");
+                $initStmt->execute(['Charan', 'charan@kaammitra.in', 'Charan (Developer)', $initialHash]);
             }
         } catch (Throwable $e) {
-            error_log("Failed to seed initial Super Admin: " . $e->getMessage());
+            error_log("Failed to seed/verify initial Developer Charan: " . $e->getMessage());
+        }
+
+        // 8. Enforce Database Engine-Level Security Triggers for Developer Account
+        try {
+            $pdo->exec("DROP TRIGGER IF EXISTS `trg_admins_protect_developer_delete`");
+            $pdo->exec("
+                CREATE TRIGGER `trg_admins_protect_developer_delete`
+                BEFORE DELETE ON `admins`
+                FOR EACH ROW
+                BEGIN
+                    IF (OLD.role = 'developer' OR OLD.is_protected = 1 OR OLD.system_tag = 'DEVELOPER_ROOT' OR LOWER(OLD.username) = 'charan') THEN
+                        SIGNAL SQLSTATE '45000'
+                        SET MESSAGE_TEXT = 'Security Violation: The system Developer account is immutable and cannot be deleted or removed.';
+                    END IF;
+                END
+            ");
+
+            $pdo->exec("DROP TRIGGER IF EXISTS `trg_admins_protect_developer_update`");
+            $pdo->exec("
+                CREATE TRIGGER `trg_admins_protect_developer_update`
+                BEFORE UPDATE ON `admins`
+                FOR EACH ROW
+                BEGIN
+                    -- Protect the developer account from demotion, deactivation, or unprotecting
+                    IF (OLD.role = 'developer' OR OLD.is_protected = 1 OR OLD.system_tag = 'DEVELOPER_ROOT' OR LOWER(OLD.username) = 'charan') THEN
+                        IF NEW.role != 'developer' THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: The Developer role cannot be demoted or modified.';
+                        END IF;
+                        IF NEW.is_active != 1 THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: The Developer account cannot be deactivated.';
+                        END IF;
+                        IF NEW.is_protected != 1 THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: Developer protection flag cannot be disabled.';
+                        END IF;
+                        IF NEW.system_tag != 'DEVELOPER_ROOT' THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: Developer system identifier is immutable.';
+                        END IF;
+                        IF LOWER(NEW.username) != 'charan' THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: Developer username cannot be altered.';
+                        END IF;
+                    END IF;
+
+                    -- Prevent other accounts from acquiring developer role or DEVELOPER_ROOT system tag
+                    IF (OLD.system_tag IS NULL OR OLD.system_tag != 'DEVELOPER_ROOT') AND LOWER(OLD.username) != 'charan' THEN
+                        IF NEW.system_tag = 'DEVELOPER_ROOT' THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: Cannot assign DEVELOPER_ROOT system identifier to another account.';
+                        END IF;
+                        IF NEW.role = 'developer' THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: Cannot promote or assign Developer role to another account.';
+                        END IF;
+                        IF NEW.is_protected = 1 THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: Protected status is reserved for the system Developer.';
+                        END IF;
+                        IF LOWER(NEW.username) = 'charan' THEN
+                            SIGNAL SQLSTATE '45000'
+                            SET MESSAGE_TEXT = 'Security Violation: Developer username is reserved.';
+                        END IF;
+                    END IF;
+                END
+            ");
+        } catch (Throwable $e) {
+            error_log("Database trigger registration warning: " . $e->getMessage());
         }
 
         $migrated = true;

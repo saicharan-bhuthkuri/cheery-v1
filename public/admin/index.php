@@ -19,7 +19,9 @@ require_once dirname(__DIR__) . '/includes/admin-auth.php';
 
 // 1. Enforce authentication and resolve fresh status from database
 $currentAdmin = requireAdmin('../auth/admin/login.php');
-$isSuperAdmin = ($currentAdmin['role'] === 'super_admin');
+$isDeveloper  = isDeveloper($currentAdmin);
+$isSuperAdmin = isSuperAdmin($currentAdmin);
+$hasGovernanceClearance = hasSuperAdminClearance($currentAdmin);
 
 $pdo = getDBConnection();
 if (!$pdo) {
@@ -28,14 +30,14 @@ if (!$pdo) {
 
 $activeTab = trim($_GET['tab'] ?? 'overview');
 $allowedTabs = ['overview', 'providers', 'bookings', 'customers', 'reports'];
-if ($isSuperAdmin) {
+if ($hasGovernanceClearance) {
     $allowedTabs[] = 'admins';
     $allowedTabs[] = 'audit';
 }
 
-// Enforce tab access control: Non-super admins cannot view admins or audit tabs
+// Enforce tab access control: Non-governance accounts (standard Admins) cannot view admins or audit tabs
 if (!in_array($activeTab, $allowedTabs, true)) {
-    if (in_array($activeTab, ['admins', 'audit'], true) && !$isSuperAdmin) {
+    if (in_array($activeTab, ['admins', 'audit'], true) && !$hasGovernanceClearance) {
         logAdminAudit(
             (int)$currentAdmin['id'],
             'RESTRICTED_TAB_VIEW_BLOCKED',
@@ -45,7 +47,7 @@ if (!in_array($activeTab, $allowedTabs, true)) {
         );
         header("HTTP/1.1 403 Forbidden");
         $activeTab = 'overview';
-        $actionError = "Access Restricted: You do not have Super Administrator clearance to view the requested section.";
+        $actionError = "Access Restricted: You do not have Super Administrator or Developer clearance to view the requested section.";
     } else {
         $activeTab = 'overview';
     }
@@ -56,12 +58,253 @@ $actionError = $actionError ?? '';
 $period = '30d';
 $analyticsPayload = [];
 
+/**
+ * Render a single table row for an administrator account in the RBAC master table.
+ * Shared between initial server-side page render and dynamic AJAX insertions.
+ */
+function renderAdminTableRow(array $adm, array $currentAdmin, string $csrfToken): string {
+    $admIsDev      = ($adm['role'] === 'developer' || isProtectedDeveloperAccount($adm));
+    $admIsSuper    = ($adm['role'] === 'super_admin');
+    $admIsStandard = ($adm['role'] === 'admin');
+    $isSelf        = ((int)$adm['id'] === (int)$currentAdmin['id']);
+    $isDeveloper   = isDeveloper($currentAdmin);
+    $isSuperAdmin  = isSuperAdmin($currentAdmin);
+
+    $searchData = strtolower(htmlspecialchars(($adm['username'] ?? '') . ' ' . ($adm['full_name'] ?? '') . ' ' . ($adm['email'] ?? '') . ' ' . ($adm['role'] ?? '')));
+    $escapedUsername = htmlspecialchars($adm['username'] ?? '');
+    $jsEscapedUsername = htmlspecialchars(addslashes($adm['username'] ?? ''));
+    $escapedFullName = htmlspecialchars($adm['full_name'] ?: 'N/A');
+    $escapedEmail = htmlspecialchars($adm['email'] ?: 'No email configured');
+    $admId = (int)$adm['id'];
+    $escapedCsrf = htmlspecialchars($csrfToken);
+
+    // Role pill
+    if ($admIsDev) {
+        $rolePill = '<span class="status-pill status-developer"><i data-lucide="crown" style="width: 12px; height: 12px;"></i><span>Developer</span></span>';
+    } elseif ($admIsSuper) {
+        $rolePill = '<span class="status-pill status-super-admin"><span class="status-dot"></span><span>Super Admin</span></span>';
+    } else {
+        $rolePill = '<span class="status-pill status-admin"><span class="status-dot"></span><span>Admin</span></span>';
+    }
+
+    // Status pill
+    if ((int)$adm['is_active'] === 1) {
+        $statusPill = '<span class="status-pill status-active"><span class="status-dot"></span><span>Active</span></span>';
+    } else {
+        $statusPill = '<span class="status-pill status-deactivated"><span class="status-dot"></span><span>Deactivated</span></span>';
+    }
+
+    // Last login
+    $lastLoginStr = !empty($adm['last_login_at']) ? date('d M Y, h:i A', strtotime($adm['last_login_at'])) : '<span style="color: #94A3B8;">Never</span>';
+
+    // Governance column
+    $governanceHtml = '';
+    if ($admIsDev) {
+        $governanceHtml = '<span class="badge-protected-root" title="Developer role cannot be modified or demoted"><i data-lucide="lock" style="width: 12px; height: 12px;"></i><span>Immutable Role</span></span>';
+    } elseif ($admIsSuper) {
+        if ($isDeveloper) {
+            $governanceHtml = <<<HTML
+<form method="POST" style="display: flex; gap: 0.35rem;" onsubmit="return confirm('Change clearance role for {$jsEscapedUsername}?');">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="update_admin_role">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <select name="new_role" class="toolbar-select" style="padding: 0.35rem 0.65rem; font-size: 0.785rem;">
+        <option value="super_admin" selected>super_admin</option>
+        <option value="admin">admin</option>
+    </select>
+    <button type="submit" class="action-circle-btn action-circle-neutral" title="Update role">
+        <i data-lucide="save" style="width: 14px; height: 14px;"></i>
+    </button>
+</form>
+HTML;
+        } else {
+            $governanceHtml = '<span class="badge-immutable" title="Super Admins cannot modify Super Admin roles"><i data-lucide="lock" style="width: 12px; height: 12px;"></i><span>Super Admin</span></span>';
+        }
+    } else {
+        if ($isDeveloper) {
+            $governanceHtml = <<<HTML
+<form method="POST" style="display: flex; gap: 0.35rem;" onsubmit="return confirm('Change clearance role for {$jsEscapedUsername}?');">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="update_admin_role">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <select name="new_role" class="toolbar-select" style="padding: 0.35rem 0.65rem; font-size: 0.785rem;">
+        <option value="admin" selected>admin</option>
+        <option value="super_admin">super_admin</option>
+    </select>
+    <button type="submit" class="action-circle-btn action-circle-neutral" title="Update role">
+        <i data-lucide="save" style="width: 14px; height: 14px;"></i>
+    </button>
+</form>
+HTML;
+        } else {
+            $governanceHtml = '<span class="badge-immutable" title="Super Admins cannot change admin roles"><i data-lucide="lock" style="width: 12px; height: 12px;"></i><span>Admin</span></span>';
+        }
+    }
+
+    // Actions cluster
+    $actionsHtml = '';
+    if ($admIsDev) {
+        $actionsHtml = '<span class="badge-protected-root" title="Protected Developer account cannot be deactivated or deleted"><i data-lucide="shield-check" style="width: 13px; height: 13px;"></i><span>Permanent</span></span>';
+        if ($isDeveloper && $isSelf) {
+            $actionsHtml .= <<<HTML
+<form method="POST" onsubmit="var p = prompt('Enter a new password for your Developer account (minimum 8 characters):'); if (!p || p.length < 8) { alert('Password must be at least 8 characters.'); return false; } document.getElementById('pwd_reset_{$admId}').value = p; return true;">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="reset_admin_password">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <input type="hidden" name="new_password" id="pwd_reset_{$admId}" value="">
+    <button type="submit" class="action-circle-btn action-circle-neutral" title="Change Developer Password">
+        <i data-lucide="key" style="width: 14px; height: 14px;"></i>
+    </button>
+</form>
+HTML;
+        }
+    } elseif ($admIsSuper) {
+        if ($isDeveloper) {
+            $toggleLabel = ((int)$adm['is_active'] === 1) ? 'deactivate' : 'activate';
+            $nextStatus = ((int)$adm['is_active'] === 1) ? '0' : '1';
+            $toggleBtn = ((int)$adm['is_active'] === 1) 
+                ? '<button type="submit" class="action-circle-btn action-circle-reject" title="Deactivate Super Admin"><i data-lucide="slash" style="width: 14px; height: 14px;"></i></button>'
+                : '<button type="submit" class="action-circle-btn action-circle-approve" title="Activate Super Admin"><i data-lucide="check" style="width: 14px; height: 14px;"></i></button>';
+
+            $actionsHtml = <<<HTML
+<form method="POST" onsubmit="return confirm('Are you sure you want to {$toggleLabel} Super Admin {$jsEscapedUsername}?');">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="toggle_admin_status">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <input type="hidden" name="new_status" value="{$nextStatus}">
+    {$toggleBtn}
+</form>
+<form method="POST" onsubmit="var p = prompt('Enter a new password for Super Admin {$jsEscapedUsername} (minimum 8 characters):'); if (!p || p.length < 8) { alert('Password must be at least 8 characters.'); return false; } document.getElementById('pwd_reset_{$admId}').value = p; return true;">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="reset_admin_password">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <input type="hidden" name="new_password" id="pwd_reset_{$admId}" value="">
+    <button type="submit" class="action-circle-btn action-circle-neutral" title="Reset Password">
+        <i data-lucide="key" style="width: 14px; height: 14px;"></i>
+    </button>
+</form>
+<form method="POST" onsubmit="return confirm('WARNING: Are you sure you want to permanently remove Super Admin {$jsEscapedUsername}? This action cannot be undone.');">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="delete_admin">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <button type="submit" class="action-circle-btn action-circle-delete" title="Permanently Remove Super Admin">
+        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+    </button>
+</form>
+HTML;
+        } else {
+            if ($isSelf) {
+                $actionsHtml = <<<HTML
+<form method="POST" onsubmit="var p = prompt('Enter a new password for your account (minimum 8 characters):'); if (!p || p.length < 8) { alert('Password must be at least 8 characters.'); return false; } document.getElementById('pwd_reset_{$admId}').value = p; return true;">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="reset_admin_password">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <input type="hidden" name="new_password" id="pwd_reset_{$admId}" value="">
+    <button type="submit" class="action-circle-btn action-circle-neutral" title="Change Password">
+        <i data-lucide="key" style="width: 14px; height: 14px;"></i>
+    </button>
+</form>
+HTML;
+            } else {
+                $actionsHtml = '<span class="badge-immutable" title="Super Admins cannot modify or remove other Super Admins"><i data-lucide="shield" style="width: 12px; height: 12px;"></i><span>Protected</span></span>';
+            }
+        }
+    } else {
+        // Standard Admin Account
+        $toggleLabel = ((int)$adm['is_active'] === 1) ? 'deactivate' : 'activate';
+        $nextStatus = ((int)$adm['is_active'] === 1) ? '0' : '1';
+        $toggleBtn = ((int)$adm['is_active'] === 1) 
+            ? '<button type="submit" class="action-circle-btn action-circle-reject" title="Deactivate Account"><i data-lucide="slash" style="width: 14px; height: 14px;"></i></button>'
+            : '<button type="submit" class="action-circle-btn action-circle-approve" title="Activate Account"><i data-lucide="check" style="width: 14px; height: 14px;"></i></button>';
+
+        $actionsHtml = <<<HTML
+<form method="POST" onsubmit="return confirm('Are you sure you want to {$toggleLabel} account {$jsEscapedUsername}?');">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="toggle_admin_status">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <input type="hidden" name="new_status" value="{$nextStatus}">
+    {$toggleBtn}
+</form>
+<form method="POST" onsubmit="var p = prompt('Enter a new temporary password for {$jsEscapedUsername} (minimum 8 characters):'); if (!p || p.length < 8) { alert('Password must be at least 8 characters.'); return false; } document.getElementById('pwd_reset_{$admId}').value = p; return true;">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="reset_admin_password">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <input type="hidden" name="new_password" id="pwd_reset_{$admId}" value="">
+    <button type="submit" class="action-circle-btn action-circle-neutral" title="Reset Password">
+        <i data-lucide="key" style="width: 14px; height: 14px;"></i>
+    </button>
+</form>
+<form method="POST" onsubmit="return confirm('Are you sure you want to permanently remove Administrator account {$jsEscapedUsername}?');">
+    <input type="hidden" name="csrf_token" value="{$escapedCsrf}">
+    <input type="hidden" name="action" value="delete_admin">
+    <input type="hidden" name="target_id" value="{$admId}">
+    <button type="submit" class="action-circle-btn action-circle-delete" title="Permanently Remove Administrator">
+        <i data-lucide="trash-2" style="width: 14px; height: 14px;"></i>
+    </button>
+</form>
+HTML;
+    }
+
+    $devTag = '';
+    if ($admIsDev) {
+        $devTag = ' &bull; <span style="color: #7C3AED; font-weight: 700;">SYSTEM ROOT</span>';
+    }
+    $crownIcon = '';
+    if ($admIsDev) {
+        $crownIcon = '<span title="System Developer — Immutable Account" style="color: #7C3AED; display: inline-flex;"><i data-lucide="crown" style="width: 14px; height: 14px;"></i></span>';
+    }
+
+    return <<<HTML
+<tr class="admin-user-row" id="admin_row_{$admId}" data-search="{$searchData}">
+    <td>
+        <div style="display: flex; align-items: center; gap: 0.4rem;">
+            <strong style="color: var(--admin-text-main); font-size: 0.95rem;">{$escapedUsername}</strong>
+            {$crownIcon}
+        </div>
+        <div style="font-size: 0.725rem; color: var(--admin-text-muted);">
+            Admin ID: #{$admId}{$devTag}
+        </div>
+    </td>
+    <td>
+        <div>{$escapedFullName}</div>
+        <div style="font-size: 0.725rem; color: var(--admin-text-muted);">{$escapedEmail}</div>
+    </td>
+    <td>
+        {$rolePill}
+    </td>
+    <td>
+        {$statusPill}
+    </td>
+    <td>
+        {$lastLoginStr}
+    </td>
+    <td>
+        {$governanceHtml}
+    </td>
+    <td>
+        <div class="table-actions-cluster">
+            {$actionsHtml}
+        </div>
+    </td>
+</tr>
+HTML;
+}
+
 // 2. Handle State-Changing POST Actions
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $csrfToken = $_POST['csrf_token'] ?? '';
     $action = $_POST['action'] ?? '';
+    $isAjax = (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') 
+           || (isset($_POST['ajax']) && $_POST['ajax'] === '1')
+           || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
 
     if (!verifyCsrfToken($csrfToken)) {
+        if ($isAjax) {
+            header('Content-Type: application/json');
+            http_response_code(403);
+            echo json_encode(['success' => false, 'message' => 'Security token invalid or expired. Please refresh the page and try again.']);
+            exit;
+        }
         $actionError = 'Security validation failed (CSRF token expired or invalid). Please try again.';
     } else {
         switch ($action) {
@@ -101,29 +344,122 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 if ($res['success']) { $actionSuccess = $res['message']; } else { $actionError = $res['message']; }
                 break;
 
-            // SUPER ADMIN PRIVILEGES: CREATE ADMINISTRATOR
+            // GOVERNANCE PRIVILEGES: CREATE ADMINISTRATOR
             case 'create_admin':
-                if (!$isSuperAdmin) {
+                if (!$hasGovernanceClearance) {
                     logAdminAudit((int)$currentAdmin['id'], 'UNAUTHORIZED_CREATE_ADMIN_ATTEMPT', 'security', null, "Standard admin '{$currentAdmin['username']}' attempted admin creation");
-                    $actionError = "Permission Denied: Only Super Administrators can create administrative accounts.";
+                    $msg = "Permission Denied: Standard Admins cannot create administrative accounts. Only Super Administrators and the Developer possess account creation clearance.";
+                    if ($isAjax) {
+                        header('Content-Type: application/json');
+                        http_response_code(403);
+                        echo json_encode(['success' => false, 'message' => $msg]);
+                        exit;
+                    }
+                    $actionError = $msg;
                 } else {
+                    $newFullName = trim($_POST['new_full_name'] ?? '');
+                    $newUsername = trim($_POST['new_username'] ?? '');
+                    $newEmail    = trim($_POST['new_email'] ?? '');
+                    $newPassword = $_POST['new_password'] ?? '';
+                    $confirmPassword = $_POST['confirm_password'] ?? '';
+                    $newRole     = trim($_POST['new_role'] ?? 'admin');
+
+                    // Comprehensive Server-Side Validations
+                    $validationErrors = [];
+                    if (empty($newFullName)) {
+                        $validationErrors[] = "Administrator's Full Name is required.";
+                    }
+                    if (empty($newUsername)) {
+                        $validationErrors[] = "Admin ID (Username) is required.";
+                    } elseif (strlen($newUsername) < 3) {
+                        $validationErrors[] = "Admin ID (Username) must be at least 3 characters.";
+                    } elseif (!preg_match('/^[a-zA-Z0-9_.-]+$/', $newUsername)) {
+                        $validationErrors[] = "Admin ID may only contain letters, numbers, underscores, and hyphens.";
+                    }
+                    if (empty($newEmail)) {
+                        $validationErrors[] = "Email address is required.";
+                    } elseif (!filter_var($newEmail, FILTER_VALIDATE_EMAIL)) {
+                        $validationErrors[] = "Please provide a valid email address.";
+                    }
+                    if (empty($newPassword)) {
+                        $validationErrors[] = "Password is required.";
+                    } elseif (strlen($newPassword) < 8) {
+                        $validationErrors[] = "Password must be at least 8 characters long for administrative clearance.";
+                    }
+                    if ($newPassword !== $confirmPassword) {
+                        $validationErrors[] = "Passwords do not match. Please ensure both passwords match.";
+                    }
+
+                    if (!empty($validationErrors)) {
+                        $errMsg = implode(' ', $validationErrors);
+                        if ($isAjax) {
+                            header('Content-Type: application/json');
+                            http_response_code(400);
+                            echo json_encode(['success' => false, 'message' => $errMsg]);
+                            exit;
+                        }
+                        $actionError = $errMsg;
+                        break;
+                    }
+
                     $payload = [
-                        'username'  => trim($_POST['new_username'] ?? ''),
-                        'full_name' => trim($_POST['new_full_name'] ?? ''),
-                        'email'     => trim($_POST['new_email'] ?? ''),
-                        'password'  => $_POST['new_password'] ?? '',
-                        'role'      => trim($_POST['new_role'] ?? 'admin')
+                        'username'  => $newUsername,
+                        'full_name' => $newFullName,
+                        'email'     => $newEmail,
+                        'password'  => $newPassword,
+                        'role'      => $newRole
                     ];
                     $res = createAdminAccount($payload, (int)$currentAdmin['id']);
+
+                    if ($isAjax) {
+                        header('Content-Type: application/json');
+                        if ($res['success']) {
+                            $newAdminId = (int)$res['admin_id'];
+                            $newStmt = $pdo->prepare("SELECT * FROM `admins` WHERE `id` = ? LIMIT 1");
+                            $newStmt->execute([$newAdminId]);
+                            $newAdminRecord = $newStmt->fetch();
+                            $csrfToken = getCsrfToken();
+                            $rowHtml = $newAdminRecord ? renderAdminTableRow($newAdminRecord, $currentAdmin, $csrfToken) : '';
+                            $totalAdminsNow = (int)$pdo->query("SELECT COUNT(*) FROM `admins`")->fetchColumn();
+                            $activeAdminsNow = (int)$pdo->query("SELECT COUNT(*) FROM `admins` WHERE `is_active` = 1")->fetchColumn();
+                            $superAdminsNow = (int)$pdo->query("SELECT COUNT(*) FROM `admins` WHERE `role` = 'super_admin'")->fetchColumn();
+                            $stdAdminsNow = (int)$pdo->query("SELECT COUNT(*) FROM `admins` WHERE `role` = 'admin'")->fetchColumn();
+
+                            echo json_encode([
+                                'success' => true,
+                                'message' => $res['message'],
+                                'admin_id' => $newAdminId,
+                                'admin' => [
+                                    'id' => $newAdminRecord['id'] ?? $newAdminId,
+                                    'username' => $newAdminRecord['username'] ?? $newUsername,
+                                    'full_name' => $newAdminRecord['full_name'] ?? $newFullName,
+                                    'email' => $newAdminRecord['email'] ?? $newEmail,
+                                    'role' => $newAdminRecord['role'] ?? $newRole
+                                ],
+                                'row_html' => $rowHtml,
+                                'counts' => [
+                                    'total' => $totalAdminsNow,
+                                    'active' => $activeAdminsNow,
+                                    'super_admins' => $superAdminsNow,
+                                    'standard_admins' => $stdAdminsNow
+                                ]
+                            ]);
+                        } else {
+                            http_response_code(400);
+                            echo json_encode(['success' => false, 'message' => $res['message']]);
+                        }
+                        exit;
+                    }
+
                     if ($res['success']) { $actionSuccess = $res['message']; } else { $actionError = $res['message']; }
                 }
                 break;
 
-            // SUPER ADMIN PRIVILEGES: TOGGLE ADMIN STATUS (ACTIVATE / DEACTIVATE)
+            // GOVERNANCE PRIVILEGES: TOGGLE ADMIN STATUS (ACTIVATE / DEACTIVATE)
             case 'toggle_admin_status':
-                if (!$isSuperAdmin) {
+                if (!$hasGovernanceClearance) {
                     logAdminAudit((int)$currentAdmin['id'], 'UNAUTHORIZED_STATUS_CHANGE_ATTEMPT', 'security', null, "Standard admin attempted status change");
-                    $actionError = "Permission Denied: Only Super Administrators can alter administrator account status.";
+                    $actionError = "Permission Denied: Standard Admins cannot alter administrator account status.";
                 } else {
                     $targetId = (int)($_POST['target_id'] ?? 0);
                     $newStatus = (int)($_POST['new_status'] ?? 0);
@@ -132,11 +468,11 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 }
                 break;
 
-            // SUPER ADMIN PRIVILEGES: UPDATE ADMIN ROLE
+            // GOVERNANCE PRIVILEGES: UPDATE ADMIN ROLE
             case 'update_admin_role':
-                if (!$isSuperAdmin) {
+                if (!$hasGovernanceClearance) {
                     logAdminAudit((int)$currentAdmin['id'], 'UNAUTHORIZED_ROLE_CHANGE_ATTEMPT', 'security', null, "Standard admin attempted role elevation");
-                    $actionError = "Permission Denied: Only Super Administrators can assign or change roles.";
+                    $actionError = "Permission Denied: Standard Admins cannot assign or change roles.";
                 } else {
                     $targetId = (int)($_POST['target_id'] ?? 0);
                     $newRole = trim($_POST['new_role'] ?? 'admin');
@@ -145,15 +481,27 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 }
                 break;
 
-            // SUPER ADMIN PRIVILEGES: RESET ADMIN PASSWORD
+            // GOVERNANCE PRIVILEGES: RESET ADMIN PASSWORD
             case 'reset_admin_password':
-                if (!$isSuperAdmin) {
+                if (!$hasGovernanceClearance) {
                     logAdminAudit((int)$currentAdmin['id'], 'UNAUTHORIZED_PASSWORD_RESET_ATTEMPT', 'security', null, "Standard admin attempted password reset");
-                    $actionError = "Permission Denied: Only Super Administrators can reset passwords.";
+                    $actionError = "Permission Denied: Standard Admins cannot reset passwords.";
                 } else {
                     $targetId = (int)($_POST['target_id'] ?? 0);
                     $newPassword = $_POST['new_password'] ?? '';
                     $res = resetAdminPassword($targetId, $newPassword, (int)$currentAdmin['id']);
+                    if ($res['success']) { $actionSuccess = $res['message']; } else { $actionError = $res['message']; }
+                }
+                break;
+
+            // GOVERNANCE PRIVILEGES: DELETE / REMOVE ADMINISTRATOR ACCOUNT
+            case 'delete_admin':
+                if (!$hasGovernanceClearance) {
+                    logAdminAudit((int)$currentAdmin['id'], 'UNAUTHORIZED_DELETE_ADMIN_ATTEMPT', 'security', null, "Standard admin attempted account deletion");
+                    $actionError = "Permission Denied: Standard Admins cannot remove administrative accounts.";
+                } else {
+                    $targetId = (int)($_POST['target_id'] ?? 0);
+                    $res = deleteAdminAccount($targetId, (int)$currentAdmin['id']);
                     if ($res['success']) { $actionSuccess = $res['message']; } else { $actionError = $res['message']; }
                 }
                 break;
@@ -271,8 +619,8 @@ $csrfToken = getCsrfToken();
                         </div>
                     </a>
 
-                    <!-- Super Admin Controls (RBAC Enforced) -->
-                    <?php if ($isSuperAdmin): ?>
+                    <!-- Governance Controls (RBAC Enforced: Developer & Super Admin) -->
+                    <?php if ($hasGovernanceClearance): ?>
                         <div class="sidebar-section-divider"></div>
                         <div class="sidebar-section-title">Governance</div>
 
@@ -305,7 +653,16 @@ $csrfToken = getCsrfToken();
                         </div>
                         <div class="sidebar-user-meta">
                             <span class="sidebar-user-name"><?= htmlspecialchars($currentAdmin['full_name'] ?: $currentAdmin['username']); ?></span>
-                            <span class="sidebar-user-role"><?= $isSuperAdmin ? '&bull; SUPER ADMIN' : '&bull; OPERATIONAL ADMIN'; ?></span>
+                            <?php
+                            if ($isDeveloper) {
+                                $roleDisplay = '&bull; DEVELOPER (ROOT)';
+                            } elseif ($isSuperAdmin) {
+                                $roleDisplay = '&bull; SUPER ADMIN';
+                            } else {
+                                $roleDisplay = '&bull; OPERATIONAL ADMIN';
+                            }
+                            ?>
+                            <span class="sidebar-user-role"><?= $roleDisplay; ?></span>
                         </div>
                     </div>
                     <a href="logout.php" class="sidebar-logout-btn" title="Sign out securely">
@@ -398,14 +755,24 @@ $csrfToken = getCsrfToken();
                     <?php
                     $adminRawName = $currentAdmin['full_name'] ?: $currentAdmin['username'];
                     $adminCleanName = trim(preg_replace('/\s*\(.*?\)/', '', $adminRawName)) ?: $currentAdmin['username'];
+                    if ($isDeveloper) {
+                        $profileChipRole = 'DEVELOPER';
+                        $profileChipTitle = 'System Developer (Charan) — Full Access';
+                    } elseif ($isSuperAdmin) {
+                        $profileChipRole = 'SUPER ADMIN';
+                        $profileChipTitle = 'Super Administrator';
+                    } else {
+                        $profileChipRole = 'ADMIN';
+                        $profileChipTitle = 'Operational Administrator';
+                    }
                     ?>
-                    <div class="header-profile-chip" title="<?= htmlspecialchars($currentAdmin['username']); ?> (<?= $isSuperAdmin ? 'Super Administrator' : 'Administrator'; ?>)">
-                        <div class="header-avatar-circle">
+                    <div class="header-profile-chip" title="<?= htmlspecialchars($currentAdmin['username']); ?> (<?= $profileChipTitle; ?>)">
+                        <div class="header-avatar-circle" style="<?= $isDeveloper ? 'background: linear-gradient(135deg, #7C3AED, #4F46E5); color: #FFFFFF;' : ''; ?>">
                             <?= strtoupper(substr($currentAdmin['username'], 0, 2)); ?>
                         </div>
                         <div class="header-profile-text">
                             <span class="header-profile-name"><?= htmlspecialchars($adminCleanName); ?></span>
-                            <span class="header-profile-role"><?= $isSuperAdmin ? 'SUPER ADMIN' : 'ADMIN'; ?></span>
+                            <span class="header-profile-role" style="<?= $isDeveloper ? 'color: #7C3AED; font-weight: 800;' : ''; ?>"><?= $profileChipRole; ?></span>
                         </div>
                         <a href="logout.php" class="header-logout-quick" title="Sign out securely">
                             <i data-lucide="log-out" style="width: 13px; height: 13px;"></i>
@@ -2268,23 +2635,27 @@ $csrfToken = getCsrfToken();
                     </div>
 
                 <!-- =============================================================
-                     TAB 6: ADMINISTRATOR ACCOUNT GOVERNANCE (SUPER ADMIN ONLY)
+                     TAB 6: ADMINISTRATOR ACCOUNT GOVERNANCE (RBAC: DEVELOPER & SUPER ADMIN)
                      ============================================================= -->
-                <?php elseif ($activeTab === 'admins' && $isSuperAdmin): ?>
+                <?php elseif ($activeTab === 'admins' && $hasGovernanceClearance): ?>
                     <?php
                     $adminsStmt = $pdo->query("SELECT * FROM `admins` ORDER BY `id` ASC");
                     $adminAccounts = $adminsStmt ? $adminsStmt->fetchAll() : [];
+                    $devCount = 0;
                     $superAdminCount = 0;
                     $standardAdminCount = 0;
                     foreach ($adminAccounts as $adm) {
-                        if ($adm['role'] === 'super_admin') {
+                        if ($adm['role'] === 'developer' || isProtectedDeveloperAccount($adm)) {
+                            $devCount++;
+                        } elseif ($adm['role'] === 'super_admin') {
                             $superAdminCount++;
                         } else {
                             $standardAdminCount++;
                         }
                     }
                     $totalAdmins = count($adminAccounts);
-                    $superAdminPct = $totalAdmins > 0 ? round(($superAdminCount / $totalAdmins) * 100) : 100;
+                    $superAdminPct = $totalAdmins > 0 ? round(($superAdminCount / $totalAdmins) * 100) : 0;
+                    $devPct = $totalAdmins > 0 ? round(($devCount / $totalAdmins) * 100) : 0;
                     ?>
 
                     <!-- Section: Control Toolbar (Matching Executive Overview) -->
@@ -2292,22 +2663,26 @@ $csrfToken = getCsrfToken();
                         <div class="analytics-filter-title">
                             <i data-lucide="shield-check" style="width: 18px; height: 18px; color: var(--brand-primary);"></i>
                             <span>Administrative Access Governance &amp; RBAC Control</span>
-                            <span class="analytics-filter-range">(<?= $totalAdmins; ?> Configured Personnel &bull; Tier-3 MFA Active)</span>
+                            <span class="analytics-filter-range">(3-Tier Hierarchy: Developer &bull; Super Admin &bull; Admin)</span>
                         </div>
                         <div class="analytics-period-pills">
                             <span class="analytics-pill-btn active">
                                 <i data-lucide="shield" style="width: 13px; height: 13px;"></i>
-                                <span>All Personnel (<?= $totalAdmins; ?>)</span>
+                                <span id="adminPersonnelTotalCount">All Personnel (<?= $totalAdmins; ?>)</span>
+                            </span>
+                            <span class="analytics-pill-btn" style="color: #7C3AED;">
+                                <i data-lucide="crown" style="width: 13px; height: 13px;"></i>
+                                <span id="adminDevCount">Developer (<?= $devCount; ?>)</span>
                             </span>
                             <span class="analytics-pill-btn">
-                                <i data-lucide="crown" style="width: 13px; height: 13px;"></i>
-                                <span>Super Admins (<?= $superAdminCount; ?>)</span>
+                                <i data-lucide="shield-alert" style="width: 13px; height: 13px;"></i>
+                                <span id="adminSuperAdminsCount">Super Admins (<?= $superAdminCount; ?>)</span>
                             </span>
                             <span class="analytics-pill-btn">
                                 <i data-lucide="user" style="width: 13px; height: 13px;"></i>
-                                <span>Standard Ops (<?= $standardAdminCount; ?>)</span>
+                                <span id="adminStandardAdminsCount">Standard Admins (<?= $standardAdminCount; ?>)</span>
                             </span>
-                            <button type="button" class="analytics-pill-btn" onclick="document.getElementById('createAdminSection').scrollIntoView({behavior: 'smooth'});">
+                            <button type="button" class="analytics-pill-btn" onclick="openCreateAdminModal();">
                                 <i data-lucide="user-plus" style="width: 13px; height: 13px;"></i>
                                 <span>+ Add Admin</span>
                             </button>
@@ -2318,12 +2693,12 @@ $csrfToken = getCsrfToken();
                     <div class="admin-summary-grid">
                         <div class="admin-summary-card">
                             <div class="summary-card-head">
-                                <span class="summary-card-label">Configured Admins</span>
+                                <span class="summary-card-label">Total Accounts</span>
                                 <div class="summary-card-icon icon-purple">
                                     <i data-lucide="shield-check" style="width: 17px; height: 17px;"></i>
                                 </div>
                             </div>
-                            <div class="summary-card-val"><?= $totalAdmins; ?></div>
+                            <div class="summary-card-val" id="summaryTotalAdminsVal"><?= $totalAdmins; ?></div>
                         </div>
 
                         <div class="admin-summary-card">
@@ -2333,47 +2708,47 @@ $csrfToken = getCsrfToken();
                                     <i data-lucide="check" style="width: 17px; height: 17px;"></i>
                                 </div>
                             </div>
-                            <div class="summary-card-val"><?= $metricTotalAdmins; ?></div>
+                            <div class="summary-card-val" id="summaryActiveAdminsVal"><?= $metricTotalAdmins; ?></div>
+                        </div>
+
+                        <div class="admin-summary-card">
+                            <div class="summary-card-head">
+                                <span class="summary-card-label">System Developer</span>
+                                <div class="summary-card-icon icon-purple" style="background: rgba(124, 58, 237, 0.15); color: #7C3AED;">
+                                    <i data-lucide="crown" style="width: 17px; height: 17px;"></i>
+                                </div>
+                            </div>
+                            <div class="summary-card-val"><?= $devCount; ?> <span style="font-size: 0.75rem; color: var(--admin-text-muted); font-weight: 600;">(Charan)</span></div>
                         </div>
 
                         <div class="admin-summary-card">
                             <div class="summary-card-head">
                                 <span class="summary-card-label">Super Administrators</span>
                                 <div class="summary-card-icon icon-amber">
-                                    <i data-lucide="crown" style="width: 17px; height: 17px;"></i>
+                                    <i data-lucide="shield-alert" style="width: 17px; height: 17px;"></i>
                                 </div>
                             </div>
-                            <div class="summary-card-val"><?= $superAdminCount; ?></div>
+                            <div class="summary-card-val" id="summarySuperAdminsVal"><?= $superAdminCount; ?></div>
                         </div>
 
                         <div class="admin-summary-card">
                             <div class="summary-card-head">
-                                <span class="summary-card-label">Standard Operators</span>
+                                <span class="summary-card-label">Standard Admins</span>
                                 <div class="summary-card-icon icon-blue">
                                     <i data-lucide="user" style="width: 17px; height: 17px;"></i>
                                 </div>
                             </div>
-                            <div class="summary-card-val"><?= $standardAdminCount; ?></div>
+                            <div class="summary-card-val" id="summaryStandardAdminsVal"><?= $standardAdminCount; ?></div>
                         </div>
 
                         <div class="admin-summary-card">
                             <div class="summary-card-head">
-                                <span class="summary-card-label">Security Tier</span>
+                                <span class="summary-card-label">Security Protocol</span>
                                 <div class="summary-card-icon icon-teal">
                                     <i data-lucide="lock" style="width: 17px; height: 17px;"></i>
                                 </div>
                             </div>
-                            <div class="summary-card-val">RBAC L3</div>
-                        </div>
-
-                        <div class="admin-summary-card">
-                            <div class="summary-card-head">
-                                <span class="summary-card-label">Session State</span>
-                                <div class="summary-card-icon icon-orange">
-                                    <i data-lucide="key" style="width: 17px; height: 17px;"></i>
-                                </div>
-                            </div>
-                            <div class="summary-card-val">Active</div>
+                            <div class="summary-card-val">RBAC 3-Tier</div>
                         </div>
                     </div>
 
@@ -2383,7 +2758,7 @@ $csrfToken = getCsrfToken();
                             <div class="progress-card-head">
                                 <div class="progress-card-title">
                                     <i data-lucide="shield-check" style="width: 15px; height: 15px; color: #10B981;"></i>
-                                    <span>RBAC Governance Rate</span>
+                                    <span>RBAC Governance Enforcement</span>
                                 </div>
                                 <span class="progress-card-pct" style="color: #10B981;">100%</span>
                             </div>
@@ -2391,39 +2766,39 @@ $csrfToken = getCsrfToken();
                                 <div class="progress-bar-fill" style="width: 100%; background: #10B981;"></div>
                             </div>
                             <div class="progress-card-sub">
-                                Strict role isolation active between super_admin and operator accounts.
+                                Strict backend isolation active across Developer, Super Admin, and Admin tiers.
                             </div>
                         </div>
 
                         <div class="admin-progress-card">
                             <div class="progress-card-head">
                                 <div class="progress-card-title">
-                                    <i data-lucide="user-check" style="width: 15px; height: 15px; color: var(--brand-primary);"></i>
-                                    <span>Personnel Clearance</span>
+                                    <i data-lucide="crown" style="width: 15px; height: 15px; color: #7C3AED;"></i>
+                                    <span>Developer Protection Status</span>
                                 </div>
-                                <span class="progress-card-pct" style="color: var(--brand-primary);">100%</span>
+                                <span class="progress-card-pct" style="color: #7C3AED;">PERMANENT</span>
                             </div>
                             <div class="progress-bar-track">
-                                <div class="progress-bar-fill" style="width: 100%; background: var(--brand-primary);"></div>
+                                <div class="progress-bar-fill" style="width: 100%; background: #7C3AED;"></div>
                             </div>
                             <div class="progress-card-sub">
-                                <?= $totalAdmins; ?> of <?= $totalAdmins; ?> administrator accounts verified with active credentials.
+                                Charan is immutable root Developer: protected against demotion, deactivation, and deletion.
                             </div>
                         </div>
 
                         <div class="admin-progress-card">
                             <div class="progress-card-head">
                                 <div class="progress-card-title">
-                                    <i data-lucide="crown" style="width: 15px; height: 15px; color: #8B5CF6;"></i>
+                                    <i data-lucide="shield-alert" style="width: 15px; height: 15px; color: #F59E0B;"></i>
                                     <span>Super Admin Ratio</span>
                                 </div>
-                                <span class="progress-card-pct" style="color: #8B5CF6;"><?= $superAdminPct; ?>%</span>
+                                <span class="progress-card-pct" style="color: #F59E0B;"><?= $superAdminPct; ?>%</span>
                             </div>
                             <div class="progress-bar-track">
-                                <div class="progress-bar-fill" style="width: <?= $superAdminPct; ?>%; background: #8B5CF6;"></div>
+                                <div class="progress-bar-fill" style="width: <?= max(5, $superAdminPct); ?>%; background: #F59E0B;"></div>
                             </div>
                             <div class="progress-card-sub">
-                                <?= $superAdminCount; ?> account holds root administrative privileges &amp; log visibility.
+                                Super Admins manage operational admins only and cannot modify or create Developer accounts.
                             </div>
                         </div>
 
@@ -2431,15 +2806,15 @@ $csrfToken = getCsrfToken();
                             <div class="progress-card-head">
                                 <div class="progress-card-title">
                                     <i data-lucide="scroll-text" style="width: 15px; height: 15px; color: #2563EB;"></i>
-                                    <span>Immutable Audit Sync</span>
+                                    <span>Audit Log Recording</span>
                                 </div>
-                                <span class="progress-card-pct" style="color: #2563EB;">100%</span>
+                                <span class="progress-card-pct" style="color: #2563EB;">Active</span>
                             </div>
                             <div class="progress-bar-track">
                                 <div class="progress-bar-fill" style="width: 100%; background: #2563EB;"></div>
                             </div>
                             <div class="progress-card-sub">
-                                All administrative state alterations piped into write-once audit log.
+                                All account creations, deletions, role updates, and access denials are logged.
                             </div>
                         </div>
                     </div>
@@ -2453,7 +2828,7 @@ $csrfToken = getCsrfToken();
                             </div>
                         </div>
                         <div class="toolbar-right">
-                            <button type="button" class="toolbar-btn-primary" onclick="document.getElementById('createAdminSection').scrollIntoView({behavior: 'smooth'});">
+                            <button type="button" class="toolbar-btn-primary" id="openCreateAdminModalBtn" onclick="openCreateAdminModal();">
                                 <i data-lucide="user-plus" style="width: 14px; height: 14px;"></i>
                                 <span>Add New Administrator</span>
                             </button>
@@ -2478,149 +2853,157 @@ $csrfToken = getCsrfToken();
                                             <th>Current Role</th>
                                             <th>Status</th>
                                             <th>Last Login</th>
-                                            <th>Role Management</th>
+                                            <th>Role Governance</th>
                                             <th>Account Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php foreach ($adminAccounts as $adm): ?>
-                                            <tr class="admin-user-row" data-search="<?= strtolower(htmlspecialchars($adm['username'] . ' ' . $adm['full_name'] . ' ' . $adm['email'])); ?>">
-                                                <td>
-                                                    <strong style="color: var(--admin-text-main); font-size: 0.95rem;"><?= htmlspecialchars($adm['username']); ?></strong>
-                                                    <div style="font-size: 0.725rem; color: var(--admin-text-muted);">Admin ID: #<?= (int)$adm['id']; ?></div>
-                                                </td>
-                                                <td>
-                                                    <div><?= htmlspecialchars($adm['full_name'] ?: 'N/A'); ?></div>
-                                                    <div style="font-size: 0.725rem; color: var(--admin-text-muted);"><?= htmlspecialchars($adm['email'] ?: 'No email configured'); ?></div>
-                                                </td>
-                                                <td>
-                                                    <?php if ($adm['role'] === 'super_admin'): ?>
-                                                        <span class="status-pill" style="background: var(--status-purple-soft); color: var(--status-purple); border: 1px solid var(--status-purple-border);">Super Admin</span>
-                                                    <?php else: ?>
-                                                        <span class="status-pill" style="background: var(--status-blue-soft); color: var(--status-blue); border: 1px solid var(--status-blue-border);">Admin</span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <?php if ((int)$adm['is_active'] === 1): ?>
-                                                        <span class="status-pill status-active"><span class="status-dot"></span><span>Active</span></span>
-                                                    <?php else: ?>
-                                                        <span class="status-pill status-deactivated"><span class="status-dot"></span><span>Deactivated</span></span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td>
-                                                    <?= !empty($adm['last_login_at']) ? date('d M Y, h:i A', strtotime($adm['last_login_at'])) : '<span style="color: #94A3B8;">Never</span>'; ?>
-                                                </td>
-                                                <td>
-                                                    <form method="POST" style="display: flex; gap: 0.35rem;" onsubmit="return confirm('Change clearance role for <?= htmlspecialchars(addslashes($adm['username'])); ?>?');">
-                                                        <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                        <input type="hidden" name="action" value="update_admin_role">
-                                                        <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
-                                                        <select name="new_role" class="toolbar-select" style="padding: 0.35rem 0.65rem; font-size: 0.785rem;">
-                                                            <option value="admin" <?= $adm['role'] === 'admin' ? 'selected' : ''; ?>>admin</option>
-                                                            <option value="super_admin" <?= $adm['role'] === 'super_admin' ? 'selected' : ''; ?>>super_admin</option>
-                                                        </select>
-                                                        <button type="submit" class="action-circle-btn action-circle-neutral" title="Update role">
-                                                            <i data-lucide="save" style="width: 14px; height: 14px;"></i>
-                                                        </button>
-                                                    </form>
-                                                </td>
-                                                <td>
-                                                    <div class="table-actions-cluster">
-                                                        <!-- Toggle Active / Deactivate -->
-                                                        <form method="POST" onsubmit="return confirm('Are you sure you want to <?= (int)$adm['is_active'] === 1 ? 'deactivate' : 'activate'; ?> account <?= htmlspecialchars(addslashes($adm['username'])); ?>?');">
-                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                            <input type="hidden" name="action" value="toggle_admin_status">
-                                                            <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
-                                                            <input type="hidden" name="new_status" value="<?= (int)$adm['is_active'] === 1 ? '0' : '1'; ?>">
-                                                            <?php if ((int)$adm['is_active'] === 1): ?>
-                                                                <button type="submit" class="action-circle-btn action-circle-reject" title="Deactivate Account">
-                                                                    <i data-lucide="slash" style="width: 14px; height: 14px;"></i>
-                                                                </button>
-                                                            <?php else: ?>
-                                                                <button type="submit" class="action-circle-btn action-circle-approve" title="Activate Account">
-                                                                    <i data-lucide="check" style="width: 14px; height: 14px;"></i>
-                                                                </button>
-                                                            <?php endif; ?>
-                                                        </form>
-
-                                                        <!-- Password Reset -->
-                                                        <form method="POST" onsubmit="var p = prompt('Enter a new temporary password for <?= htmlspecialchars(addslashes($adm['username'])); ?> (minimum 8 characters):'); if (!p || p.length < 8) { alert('Password must be at least 8 characters.'); return false; } document.getElementById('pwd_reset_<?= $adm['id']; ?>').value = p; return true;">
-                                                            <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
-                                                            <input type="hidden" name="action" value="reset_admin_password">
-                                                            <input type="hidden" name="target_id" value="<?= (int)$adm['id']; ?>">
-                                                            <input type="hidden" name="new_password" id="pwd_reset_<?= $adm['id']; ?>" value="">
-                                                            <button type="submit" class="action-circle-btn action-circle-neutral" title="Reset Password">
-                                                                <i data-lucide="key" style="width: 14px; height: 14px;"></i>
-                                                            </button>
-                                                        </form>
-                                                    </div>
+                                        <?php if (empty($adminAccounts)): ?>
+                                            <tr class="admin-empty-table-row">
+                                                <td colspan="7" style="text-align: center; padding: 2.5rem; color: var(--admin-text-muted);">
+                                                    No administrative accounts configured.
                                                 </td>
                                             </tr>
-                                        <?php endforeach; ?>
+                                        <?php else: ?>
+                                            <?php foreach ($adminAccounts as $adm): ?>
+                                                <?= renderAdminTableRow($adm, $currentAdmin, $csrfToken); ?>
+                                            <?php endforeach; ?>
+                                        <?php endif; ?>
                                     </tbody>
                                 </table>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Create Administrator Form Section -->
-                    <div class="admin-card" id="createAdminSection">
-                        <div class="admin-card-head">
-                            <h3 class="admin-card-title">
-                                <i data-lucide="user-plus" style="width: 17px; height: 17px; color: var(--brand-primary);"></i>
-                                <span>Create New Administrator Account</span>
-                            </h3>
-                        </div>
-                        <div class="admin-card-body">
-                            <form method="POST" style="max-width: 680px;">
+                    <!-- Centered Popup Modal Overlay: Create New Administrator Account -->
+                    <div id="createAdminModal" class="admin-modal-overlay" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="createAdminModalTitle">
+                        <div class="admin-modal-dialog">
+                            <!-- Modal Header -->
+                            <div class="admin-modal-header">
+                                <div class="admin-modal-header-info">
+                                    <div class="admin-modal-icon-badge">
+                                        <i data-lucide="user-plus" style="width: 20px; height: 20px;"></i>
+                                    </div>
+                                    <div>
+                                        <h3 class="admin-modal-title" id="createAdminModalTitle">Create New Administrator Account</h3>
+                                        <p class="admin-modal-subtitle">Configure credentials and administrative clearance for platform operations.</p>
+                                    </div>
+                                </div>
+                                <button type="button" class="admin-modal-close" onclick="closeCreateAdminModal();" aria-label="Close modal">&times;</button>
+                            </div>
+
+                            <!-- Inline Feedback Alerts -->
+                            <div class="admin-modal-alerts-container">
+                                <div id="modalAdminErrorAlert" class="admin-modal-alert admin-modal-alert-danger" style="display: none;">
+                                    <i data-lucide="alert-circle" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+                                    <div class="modal-alert-text" id="modalAdminErrorText"></div>
+                                </div>
+                                <div id="modalAdminSuccessAlert" class="admin-modal-alert admin-modal-alert-success" style="display: none;">
+                                    <i data-lucide="check-circle-2" style="width: 18px; height: 18px; flex-shrink: 0;"></i>
+                                    <div class="modal-alert-text" id="modalAdminSuccessText"></div>
+                                </div>
+                            </div>
+
+                            <!-- Modal Form Body -->
+                            <form id="createAdminModalForm" onsubmit="handleCreateAdminModalSubmit(event);" novalidate>
                                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken); ?>">
                                 <input type="hidden" name="action" value="create_admin">
+                                <input type="hidden" name="ajax" value="1">
 
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                                    <div class="admin-form-group" style="margin: 0;">
-                                        <label class="admin-form-label">Admin ID (Username) *</label>
-                                        <input type="text" name="new_username" class="admin-form-input" placeholder="e.g. rahul_admin" required autocomplete="off">
+                                <div class="admin-modal-body">
+                                    <!-- Row 1: Name and Username -->
+                                    <div class="admin-modal-grid-2">
+                                        <div class="admin-form-group">
+                                            <label class="admin-form-label" for="modal_admin_name">Administrator's Name *</label>
+                                            <div class="admin-input-icon-wrap">
+                                                <i data-lucide="user" class="input-leading-icon"></i>
+                                                <input type="text" name="new_full_name" id="modal_admin_name" class="admin-form-input with-leading-icon" placeholder="e.g. Rahul Verma" required autocomplete="name">
+                                            </div>
+                                            <span class="admin-field-hint">Enter official first &amp; last name</span>
+                                        </div>
+
+                                        <div class="admin-form-group">
+                                            <label class="admin-form-label" for="modal_admin_username">Username / Admin ID *</label>
+                                            <div class="admin-input-icon-wrap">
+                                                <i data-lucide="at-sign" class="input-leading-icon"></i>
+                                                <input type="text" name="new_username" id="modal_admin_username" class="admin-form-input with-leading-icon" placeholder="e.g. rahul_admin" required autocomplete="username">
+                                            </div>
+                                            <span class="admin-field-hint">Unique login ID (min 3 chars, letters, numbers, _, -)</span>
+                                        </div>
                                     </div>
-                                    <div class="admin-form-group" style="margin: 0;">
-                                        <label class="admin-form-label">Full Name *</label>
-                                        <input type="text" name="new_full_name" class="admin-form-input" placeholder="e.g. Rahul Verma" required>
+
+                                    <!-- Row 2: Email Address -->
+                                    <div class="admin-form-group">
+                                        <label class="admin-form-label" for="modal_admin_email">Email Address *</label>
+                                        <div class="admin-input-icon-wrap">
+                                            <i data-lucide="mail" class="input-leading-icon"></i>
+                                            <input type="email" name="new_email" id="modal_admin_email" class="admin-form-input with-leading-icon" placeholder="e.g. rahul@kaammitra.in" required autocomplete="email">
+                                        </div>
+                                        <span class="admin-field-hint">Official organization email for system notices</span>
+                                    </div>
+
+                                    <!-- Row 3: Passwords -->
+                                    <div class="admin-modal-grid-2">
+                                        <div class="admin-form-group">
+                                            <label class="admin-form-label" for="modal_admin_password">Password *</label>
+                                            <div class="admin-input-icon-wrap">
+                                                <i data-lucide="lock" class="input-leading-icon"></i>
+                                                <input type="password" name="new_password" id="modal_admin_password" class="admin-form-input with-leading-icon with-trailing-action" placeholder="Min 8 characters" required minlength="8" autocomplete="new-password">
+                                                <button type="button" class="input-trailing-toggle" onclick="togglePasswordVisibility('modal_admin_password', this);" title="Show/Hide Password" tabindex="-1">
+                                                    <i data-lucide="eye" style="width: 15px; height: 15px;"></i>
+                                                </button>
+                                            </div>
+                                            <span class="admin-field-hint">Must be at least 8 characters long</span>
+                                        </div>
+
+                                        <div class="admin-form-group">
+                                            <label class="admin-form-label" for="modal_admin_confirm_password">Confirm Password *</label>
+                                            <div class="admin-input-icon-wrap">
+                                                <i data-lucide="lock" class="input-leading-icon"></i>
+                                                <input type="password" name="confirm_password" id="modal_admin_confirm_password" class="admin-form-input with-leading-icon with-trailing-action" placeholder="Repeat password" required minlength="8" autocomplete="new-password">
+                                                <button type="button" class="input-trailing-toggle" onclick="togglePasswordVisibility('modal_admin_confirm_password', this);" title="Show/Hide Password" tabindex="-1">
+                                                    <i data-lucide="eye" style="width: 15px; height: 15px;"></i>
+                                                </button>
+                                            </div>
+                                            <span class="admin-field-hint">Must match password exactly</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- Row 4: Assigned Role Selection -->
+                                    <div class="admin-form-group" style="margin-bottom: 0.25rem;">
+                                        <label class="admin-form-label" for="modal_admin_role">Assigned Administrative Role *</label>
+                                        <select name="new_role" id="modal_admin_role" class="admin-form-select" required>
+                                            <option value="admin" selected>Admin (Operational Clearance — Default)</option>
+                                            <?php if ($isDeveloper): ?>
+                                                <option value="super_admin">Super Admin (Full Governance &amp; Account Control)</option>
+                                            <?php endif; ?>
+                                        </select>
+                                        <span class="admin-field-hint">
+                                            <?php if ($isDeveloper): ?>
+                                                As Developer, you can grant Super Administrator or standard Admin clearance. (Charan is the permanent Developer).
+                                            <?php else: ?>
+                                                Super Administrators can create operational Admin accounts. Creation of Super Administrator accounts is reserved exclusively for the Developer.
+                                            <?php endif; ?>
+                                        </span>
                                     </div>
                                 </div>
 
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                                    <div class="admin-form-group" style="margin: 0;">
-                                        <label class="admin-form-label">Email Address *</label>
-                                        <input type="email" name="new_email" class="admin-form-input" placeholder="e.g. rahul@kaammitra.in" required>
-                                    </div>
-                                    <div class="admin-form-group" style="margin: 0;">
-                                        <label class="admin-form-label">Initial Password (Min 8 Chars) *</label>
-                                        <input type="password" name="new_password" class="admin-form-input" placeholder="Secure temporary password" required minlength="8">
-                                    </div>
+                                <!-- Modal Footer -->
+                                <div class="admin-modal-footer">
+                                    <button type="button" class="btn-modal-cancel" id="closeAdminModalBtn" onclick="closeCreateAdminModal();">Cancel</button>
+                                    <button type="submit" class="toolbar-btn-primary btn-modal-submit" id="createAdminSubmitBtn">
+                                        <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
+                                        <span>Create Administrator</span>
+                                    </button>
                                 </div>
-
-                                <div class="admin-form-group" style="margin-bottom: 1.5rem;">
-                                    <label class="admin-form-label">Assigned Administrative Role *</label>
-                                    <select name="new_role" class="admin-form-select" required>
-                                        <option value="admin" selected>admin (Restricted Operational Clearance - Default)</option>
-                                        <option value="super_admin">super_admin (Full Governance &amp; Account Control)</option>
-                                    </select>
-                                    <span style="font-size: 0.775rem; color: var(--admin-text-muted); display: block; margin-top: 0.35rem;">
-                                        Standard 'admin' accounts cannot manage other administrators, view audit logs, or access security settings.
-                                    </span>
-                                </div>
-
-                                <button type="submit" class="toolbar-btn-primary" style="padding: 0.65rem 1.5rem;">
-                                    <i data-lucide="shield-check" style="width: 16px; height: 16px;"></i>
-                                    <span>Create Administrator Account</span>
-                                </button>
                             </form>
                         </div>
                     </div>
 
                 <!-- =============================================================
-                     TAB 7: IMMUTABLE SECURITY AUDIT LOGS (SUPER ADMIN ONLY)
+                     TAB 7: IMMUTABLE SECURITY AUDIT LOGS (RBAC: DEVELOPER & SUPER ADMIN)
                      ============================================================= -->
-                <?php elseif ($activeTab === 'audit' && $isSuperAdmin): ?>
+                <?php elseif ($activeTab === 'audit' && $hasGovernanceClearance): ?>
                     <?php
                     $filterAction = trim($_GET['action_filter'] ?? '');
                     $sql = "SELECT * FROM `admin_audit_logs`";
@@ -2887,6 +3270,9 @@ $csrfToken = getCsrfToken();
 
     </div><!-- /.admin-app -->
 
+    <!-- Global Admin Toast Container -->
+    <div id="adminToastContainer" class="admin-toast-container" aria-live="polite"></div>
+
     <!-- =============================================================
          INTERACTIVE BEHAVIOR & LOGIC
          ============================================================= -->
@@ -2902,6 +3288,277 @@ $csrfToken = getCsrfToken();
             if (reasonInput) reasonInput.value = reason.trim();
             return true;
         }
+
+        // =============================================================
+        // CREATE ADMINISTRATOR MODAL & ASYNC OPERATIONS
+        // =============================================================
+        function openCreateAdminModal() {
+            const modal = document.getElementById('createAdminModal');
+            if (!modal) return;
+
+            // Clear alert states
+            const errAlert = document.getElementById('modalAdminErrorAlert');
+            const succAlert = document.getElementById('modalAdminSuccessAlert');
+            if (errAlert) errAlert.style.display = 'none';
+            if (succAlert) succAlert.style.display = 'none';
+
+            // Show modal
+            modal.classList.add('active');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+
+            // Focus on first input
+            setTimeout(() => {
+                const nameInput = document.getElementById('modal_admin_name');
+                if (nameInput) nameInput.focus();
+            }, 120);
+        }
+
+        function closeCreateAdminModal() {
+            const modal = document.getElementById('createAdminModal');
+            if (!modal) return;
+
+            modal.classList.remove('active');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        function togglePasswordVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input || !btn) return;
+            const isPassword = input.getAttribute('type') === 'password';
+            input.setAttribute('type', isPassword ? 'text' : 'password');
+            const icon = btn.querySelector('i');
+            if (icon) {
+                icon.setAttribute('data-lucide', isPassword ? 'eye-off' : 'eye');
+                if (window.lucide && lucide.createIcons) {
+                    lucide.createIcons();
+                }
+            }
+        }
+
+        async function handleCreateAdminModalSubmit(e) {
+            e.preventDefault();
+            const form = document.getElementById('createAdminModalForm');
+            const errAlert = document.getElementById('modalAdminErrorAlert');
+            const errText = document.getElementById('modalAdminErrorText');
+            const succAlert = document.getElementById('modalAdminSuccessAlert');
+            const succText = document.getElementById('modalAdminSuccessText');
+            const submitBtn = document.getElementById('createAdminSubmitBtn');
+
+            if (errAlert) errAlert.style.display = 'none';
+            if (succAlert) succAlert.style.display = 'none';
+
+            const nameEl = document.getElementById('modal_admin_name');
+            const userEl = document.getElementById('modal_admin_username');
+            const emailEl = document.getElementById('modal_admin_email');
+            const pwdEl = document.getElementById('modal_admin_password');
+            const confirmEl = document.getElementById('modal_admin_confirm_password');
+
+            const fullName = (nameEl ? nameEl.value : '').trim();
+            const username = (userEl ? userEl.value : '').trim();
+            const email = (emailEl ? emailEl.value : '').trim();
+            const password = pwdEl ? pwdEl.value : '';
+            const confirmPassword = confirmEl ? confirmEl.value : '';
+
+            const showModalError = (msg, inputToFocus) => {
+                if (errText) errText.textContent = msg;
+                if (errAlert) {
+                    errAlert.style.display = 'flex';
+                    errAlert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+                if (inputToFocus) inputToFocus.focus();
+            };
+
+            // Comprehensive Client-Side Validations
+            if (!fullName) {
+                showModalError("Please enter the administrator's full name.", nameEl);
+                return false;
+            }
+            if (!username) {
+                showModalError("Please enter an Admin ID (username).", userEl);
+                return false;
+            }
+            if (username.length < 3) {
+                showModalError("Admin ID (username) must be at least 3 characters long.", userEl);
+                return false;
+            }
+            if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+                showModalError("Admin ID may only contain letters, numbers, underscores, and hyphens.", userEl);
+                return false;
+            }
+            if (!email) {
+                showModalError("Please enter an official email address.", emailEl);
+                return false;
+            }
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                showModalError("Please enter a valid email address.", emailEl);
+                return false;
+            }
+            if (!password) {
+                showModalError("Please enter a password.", pwdEl);
+                return false;
+            }
+            if (password.length < 8) {
+                showModalError("Password must be at least 8 characters long for administrative clearance.", pwdEl);
+                return false;
+            }
+            if (password !== confirmPassword) {
+                showModalError("Passwords do not match. Please verify and re-enter both passwords.", confirmEl);
+                return false;
+            }
+
+            // Set loading state
+            const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.innerHTML = '<i data-lucide="loader-2" class="spin-icon" style="width: 16px; height: 16px;"></i><span>Creating Account...</span>';
+                if (window.lucide && lucide.createIcons) lucide.createIcons();
+            }
+
+            try {
+                const formData = new FormData(form);
+                formData.set('ajax', '1');
+
+                const response = await fetch('index.php?tab=admins', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Accept': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // 1. Insert new row into admin table
+                    const table = document.getElementById('adminUsersMasterTable');
+                    if (table && data.row_html) {
+                        let tbody = table.querySelector('tbody');
+                        if (!tbody) {
+                            tbody = document.createElement('tbody');
+                            table.appendChild(tbody);
+                        }
+
+                        // Remove empty row placeholder if present
+                        const emptyRow = tbody.querySelector('.admin-empty-table-row');
+                        if (emptyRow) emptyRow.remove();
+
+                        // Parse and prepend new row
+                        const tempTable = document.createElement('table');
+                        tempTable.innerHTML = data.row_html.trim();
+                        const newRow = tempTable.querySelector('tr');
+
+                        if (newRow) {
+                            newRow.classList.add('new-admin-row-highlight');
+                            tbody.insertBefore(newRow, tbody.firstChild);
+
+                            if (window.lucide && lucide.createIcons) {
+                                lucide.createIcons();
+                            }
+
+                            setTimeout(() => {
+                                newRow.classList.remove('new-admin-row-highlight');
+                            }, 3500);
+                        }
+                    }
+
+                    // 2. Update real-time summary counts
+                    if (data.counts) {
+                        const totalBadge = document.getElementById('adminPersonnelTotalCount');
+                        if (totalBadge && data.counts.total) {
+                            totalBadge.textContent = `All Personnel (${data.counts.total})`;
+                        }
+                        const superBadge = document.getElementById('adminSuperAdminsCount');
+                        if (superBadge && data.counts.super_admins !== undefined) {
+                            superBadge.textContent = `Super Admins (${data.counts.super_admins})`;
+                        }
+                        const stdBadge = document.getElementById('adminStandardAdminsCount');
+                        if (stdBadge && data.counts.standard_admins !== undefined) {
+                            stdBadge.textContent = `Standard Admins (${data.counts.standard_admins})`;
+                        }
+                        const totalVal = document.getElementById('summaryTotalAdminsVal');
+                        if (totalVal && data.counts.total) totalVal.textContent = data.counts.total;
+                        const activeVal = document.getElementById('summaryActiveAdminsVal');
+                        if (activeVal && data.counts.active) activeVal.textContent = data.counts.active;
+                        const superVal = document.getElementById('summarySuperAdminsVal');
+                        if (superVal && data.counts.super_admins !== undefined) superVal.textContent = data.counts.super_admins;
+                        const stdVal = document.getElementById('summaryStandardAdminsVal');
+                        if (stdVal && data.counts.standard_admins !== undefined) stdVal.textContent = data.counts.standard_admins;
+                    }
+
+                    // 3. Reset form
+                    form.reset();
+
+                    // 4. Close modal and show floating toast
+                    closeCreateAdminModal();
+                    showAdminToast('success', data.message || `Administrator account '${username}' successfully created!`);
+
+                } else {
+                    showModalError(data.message || 'An error occurred while creating the account.');
+                }
+            } catch (err) {
+                showModalError('A network or server error occurred. Please check your connection and try again.');
+                console.error('Create Admin error:', err);
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.innerHTML = originalBtnHtml;
+                    if (window.lucide && lucide.createIcons) lucide.createIcons();
+                }
+            }
+        }
+
+        // Floating Toast Notification
+        function showAdminToast(type, message) {
+            let container = document.getElementById('adminToastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'adminToastContainer';
+                container.className = 'admin-toast-container';
+                document.body.appendChild(container);
+            }
+
+            const toast = document.createElement('div');
+            toast.className = `admin-toast toast-${type}`;
+            const iconName = type === 'success' ? 'check-circle' : 'alert-circle';
+            const iconColor = type === 'success' ? '#10B981' : '#EF4444';
+
+            toast.innerHTML = `
+                <i data-lucide="${iconName}" style="width: 18px; height: 18px; flex-shrink: 0; color: ${iconColor};"></i>
+                <span>${message}</span>
+            `;
+            container.appendChild(toast);
+            if (window.lucide && lucide.createIcons) lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.add('toast-fade-out');
+                setTimeout(() => toast.remove(), 320);
+            }, 4000);
+        }
+
+        // Global Modal Keyboard & Backdrop Listeners
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('createAdminModal');
+                if (modal && modal.classList.contains('active')) {
+                    closeCreateAdminModal();
+                }
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('createAdminModal');
+            if (modal) {
+                modal.addEventListener('click', (e) => {
+                    if (e.target === modal) {
+                        closeCreateAdminModal();
+                    }
+                });
+            }
+        });
 
         document.addEventListener('DOMContentLoaded', () => {
             document.documentElement.classList.remove('preload-sidebar-collapsed');

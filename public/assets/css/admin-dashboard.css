@@ -1301,6 +1301,21 @@ body.admin-body {
     transform: scale(1.08);
 }
 
+.action-circle-delete {
+    background: var(--status-red-soft);
+    border-color: var(--status-red-border);
+    color: var(--status-red-text);
+}
+.action-circle-delete:hover {
+    background: #DC2626;
+    color: #FFFFFF;
+    border-color: #DC2626;
+    transform: scale(1.08);
+}
+.action-circle-delete:hover svg {
+    color: #FFFFFF !important;
+}
+
 .action-circle-neutral {
     background: #F8FAFC;
     border-color: var(--admin-border);
@@ -1311,6 +1326,54 @@ body.admin-body {
     color: var(--admin-text-main);
     border-color: #CBD5E1;
     transform: scale(1.08);
+}
+
+/* Developer & RBAC Status Badges */
+.status-developer {
+    background: #FAF5FF;
+    color: #6B21A8;
+    border: 1px solid #DDD6FE;
+}
+.status-developer .status-dot { background: #7C3AED; }
+
+.status-super-admin {
+    background: var(--status-purple-soft);
+    color: var(--status-purple);
+    border: 1px solid var(--status-purple-border);
+}
+.status-super-admin .status-dot { background: #7C3AED; }
+
+.status-admin {
+    background: var(--status-blue-soft);
+    color: var(--status-blue);
+    border: 1px solid var(--status-blue-border);
+}
+.status-admin .status-dot { background: #2563EB; }
+
+.badge-immutable {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-xs);
+    font-size: 0.725rem;
+    font-weight: 700;
+    background: #F1F5F9;
+    color: #475569;
+    border: 1px solid #CBD5E1;
+}
+
+.badge-protected-root {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-xs);
+    font-size: 0.725rem;
+    font-weight: 700;
+    background: #FAF5FF;
+    color: #7C3AED;
+    border: 1px solid #DDD6FE;
 }
 
 /* ==========================================================================
@@ -1965,3 +2028,384 @@ body.admin-body {
         width: 100%;
     }
 }
+
+/* ==========================================================================
+   16. ADMINISTRATOR CREATION POPUP MODAL & TOAST SYSTEM
+   ========================================================================== */
+.admin-modal-overlay {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    z-index: 99999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.25rem;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.24s;
+}
+
+.admin-modal-overlay.active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.admin-modal-dialog {
+    background: #FFFFFF;
+    border-radius: 18px;
+    border: 1px solid var(--admin-border);
+    box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(15, 23, 42, 0.05);
+    width: 100%;
+    max-width: 620px;
+    max-height: calc(100vh - 2.5rem);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transform: translateY(18px) scale(0.97);
+    transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.admin-modal-overlay.active .admin-modal-dialog {
+    transform: translateY(0) scale(1);
+}
+
+.admin-modal-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--admin-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #FFFFFF;
+    gap: 1rem;
+}
+
+.admin-modal-header-info {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.admin-modal-icon-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--brand-primary-soft);
+    color: var(--brand-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 2px 6px rgba(255, 85, 0, 0.12);
+}
+
+.admin-modal-title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: var(--admin-text-main);
+    letter-spacing: -0.01em;
+}
+
+.admin-modal-subtitle {
+    margin: 0.2rem 0 0 0;
+    font-size: 0.8rem;
+    color: var(--admin-text-muted);
+    font-weight: 500;
+    line-height: 1.35;
+}
+
+.admin-modal-close {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: #F8FAFC;
+    color: var(--admin-text-muted);
+    font-size: 1.45rem;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    flex-shrink: 0;
+    font-weight: 400;
+}
+
+.admin-modal-close:hover {
+    background: #F1F5F9;
+    color: var(--admin-text-main);
+    border-color: var(--admin-border);
+}
+
+.admin-modal-alerts-container {
+    padding: 1rem 1.5rem 0 1.5rem;
+}
+
+.admin-modal-alert {
+    padding: 0.85rem 1.1rem;
+    border-radius: var(--radius-md);
+    font-size: 0.825rem;
+    font-weight: 600;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+    animation: modalFadeIn 0.2s ease-out;
+    line-height: 1.4;
+}
+
+.admin-modal-alert-danger {
+    background: #FEF2F2;
+    border: 1px solid #FECACA;
+    color: #991B1B;
+}
+
+.admin-modal-alert-success {
+    background: #ECFDF5;
+    border: 1px solid #A7F3D0;
+    color: #065F46;
+}
+
+.admin-modal-body {
+    padding: 1.25rem 1.5rem;
+    overflow-y: auto;
+    flex: 1;
+    max-height: calc(88vh - 170px);
+}
+
+.admin-modal-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.admin-input-icon-wrap {
+    position: relative;
+    width: 100%;
+    display: flex;
+    align-items: center;
+}
+
+.admin-input-icon-wrap .input-leading-icon {
+    position: absolute;
+    left: 0.85rem;
+    width: 16px;
+    height: 16px;
+    color: var(--admin-text-light);
+    pointer-events: none;
+    transition: color 0.2s ease;
+}
+
+.admin-form-input.with-leading-icon {
+    padding-left: 2.45rem;
+}
+
+.admin-form-input.with-trailing-action {
+    padding-right: 2.65rem;
+}
+
+.admin-input-icon-wrap:focus-within .input-leading-icon {
+    color: var(--brand-primary);
+}
+
+.input-trailing-toggle {
+    position: absolute;
+    right: 0.65rem;
+    background: transparent;
+    border: none;
+    color: var(--admin-text-muted);
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+
+.input-trailing-toggle:hover {
+    color: var(--admin-text-main);
+    background: #F1F5F9;
+}
+
+.admin-field-hint {
+    display: block;
+    font-size: 0.735rem;
+    color: var(--admin-text-muted);
+    margin-top: 0.35rem;
+    font-weight: 500;
+}
+
+.admin-modal-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--admin-border);
+    background: #FAFBFD;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.btn-modal-cancel {
+    padding: 0.65rem 1.35rem;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--admin-border);
+    background: #FFFFFF;
+    color: var(--admin-text-body);
+    font-weight: 700;
+    font-size: 0.85rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.btn-modal-cancel:hover {
+    background: #F8FAFC;
+    border-color: #CBD5E1;
+    color: var(--admin-text-main);
+}
+
+.btn-modal-submit {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1.45rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-family: inherit;
+    box-shadow: 0 2px 8px rgba(255, 85, 0, 0.25);
+}
+
+.btn-modal-submit:disabled {
+    opacity: 0.75;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+.spin-icon {
+    animation: modalSpin 0.9s linear infinite;
+}
+
+@keyframes modalSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes modalFadeIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes highlightNewRow {
+    0% { background-color: rgba(16, 185, 129, 0.22); }
+    100% { background-color: transparent; }
+}
+
+.new-admin-row-highlight {
+    animation: highlightNewRow 3.5s ease-out;
+}
+
+/* Floating Toast Notification */
+.admin-toast-container {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 100000;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    pointer-events: none;
+}
+
+.admin-toast {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1.25rem;
+    background: #0F172A;
+    color: #FFFFFF;
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+    font-size: 0.875rem;
+    font-weight: 600;
+    animation: toastSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    min-width: 280px;
+    max-width: 440px;
+    line-height: 1.4;
+}
+
+.admin-toast.toast-success {
+    border-left: 4px solid var(--status-emerald);
+}
+
+.admin-toast.toast-error {
+    border-left: 4px solid var(--status-red);
+}
+
+.admin-toast.toast-fade-out {
+    opacity: 0;
+    transform: translateY(10px);
+    transition: all 0.3s ease;
+}
+
+@keyframes toastSlideIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Modal Responsive Behavior */
+@media (max-width: 640px) {
+    .admin-modal-dialog {
+        max-height: calc(100vh - 1.5rem);
+        border-radius: 14px;
+    }
+
+    .admin-modal-grid-2 {
+        grid-template-columns: 1fr;
+        gap: 0.85rem;
+    }
+
+    .admin-modal-header,
+    .admin-modal-body,
+    .admin-modal-footer,
+    .admin-modal-alerts-container {
+        padding-left: 1.1rem;
+        padding-right: 1.1rem;
+    }
+
+    .admin-modal-header {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+    }
+
+    .admin-modal-footer {
+        flex-direction: column-reverse;
+        gap: 0.5rem;
+    }
+
+    .admin-modal-footer button {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .admin-toast-container {
+        bottom: 1rem;
+        right: 1rem;
+        left: 1rem;
+    }
+
+    .admin-toast {
+        max-width: 100%;
+        min-width: 0;
+    }
+}
+

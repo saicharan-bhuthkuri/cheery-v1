@@ -11,8 +11,15 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth.php'; // For initSecureSession, CSRF helpers
 
 /* ==========================================================================
-   RATE LIMITING & BRUTE FORCE PROTECTION
+   ROLE DEFINITIONS & IMMUTABLE DEVELOPER CONSTANTS
    ========================================================================== */
+
+if (!defined('ROLE_DEVELOPER')) define('ROLE_DEVELOPER', 'developer');
+if (!defined('ROLE_SUPER_ADMIN')) define('ROLE_SUPER_ADMIN', 'super_admin');
+if (!defined('ROLE_ADMIN')) define('ROLE_ADMIN', 'admin');
+
+if (!defined('DEVELOPER_SYSTEM_TAG')) define('DEVELOPER_SYSTEM_TAG', 'DEVELOPER_ROOT');
+if (!defined('DEVELOPER_DEFAULT_USERNAME')) define('DEVELOPER_DEFAULT_USERNAME', 'Charan');
 
 /**
  * Check if the given IP address or username is temporarily locked out
@@ -183,7 +190,7 @@ function getCurrentAdmin(): ?array {
     try {
         $adminId = (int)$_SESSION['admin_id'];
         $stmt = $pdo->prepare("
-            SELECT `id`, `username`, `email`, `full_name`, `role`, `is_active`, `created_at`, `updated_at`, `last_login_at`
+            SELECT `id`, `username`, `email`, `full_name`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`, `updated_at`, `last_login_at`
             FROM `admins`
             WHERE `id` = ?
             LIMIT 1
@@ -207,6 +214,7 @@ function getCurrentAdmin(): ?array {
         // Keep session role in sync with database authority
         $_SESSION['admin_role'] = $admin['role'];
         $_SESSION['admin_username'] = $admin['username'];
+        $_SESSION['admin_is_developer'] = ($admin['role'] === ROLE_DEVELOPER || ($admin['system_tag'] ?? '') === DEVELOPER_SYSTEM_TAG);
 
         return $admin;
     } catch (Throwable $e) {
@@ -216,11 +224,89 @@ function getCurrentAdmin(): ?array {
 }
 
 /**
- * Check if the currently authenticated user has the Super Admin role
+ * Check if the active administrator is the system Developer (Charan).
+ * Validates role and immutable system tags.
  */
-function isSuperAdmin(): bool {
-    $admin = getCurrentAdmin();
-    return $admin !== null && $admin['role'] === 'super_admin';
+function isDeveloper(?array $admin = null): bool {
+    if ($admin === null) {
+        $admin = getCurrentAdmin();
+    }
+    if (!$admin) return false;
+    return ($admin['role'] === ROLE_DEVELOPER) ||
+           (($admin['system_tag'] ?? '') === DEVELOPER_SYSTEM_TAG) ||
+           (!empty($admin['is_protected']) && (int)$admin['is_protected'] === 1) ||
+           (strtolower($admin['username'] ?? '') === strtolower(DEVELOPER_DEFAULT_USERNAME));
+}
+
+/**
+ * Check if the active administrator possesses the Super Admin role.
+ */
+function isSuperAdmin(?array $admin = null): bool {
+    if ($admin === null) {
+        $admin = getCurrentAdmin();
+    }
+    return $admin !== null && $admin['role'] === ROLE_SUPER_ADMIN;
+}
+
+/**
+ * Check if the active administrator possesses the operational Admin role.
+ */
+function isAdminRole(?array $admin = null): bool {
+    if ($admin === null) {
+        $admin = getCurrentAdmin();
+    }
+    return $admin !== null && $admin['role'] === ROLE_ADMIN;
+}
+
+/**
+ * Check if the administrator possesses at least Super Admin clearance (Developer or Super Admin).
+ */
+function hasSuperAdminClearance(?array $admin = null): bool {
+    if ($admin === null) {
+        $admin = getCurrentAdmin();
+    }
+    if (!$admin) return false;
+    return isDeveloper($admin) || isSuperAdmin($admin);
+}
+
+/**
+ * Verify whether a given account record, ID, or username represents the protected Developer account.
+ * Checked via system tag, is_protected flag, role, or username.
+ *
+ * @param array|int|string $account
+ * @return bool
+ */
+function isProtectedDeveloperAccount($account): bool {
+    if (is_array($account)) {
+        if (($account['system_tag'] ?? '') === DEVELOPER_SYSTEM_TAG) return true;
+        if (!empty($account['is_protected']) && (int)$account['is_protected'] === 1) return true;
+        if (($account['role'] ?? '') === ROLE_DEVELOPER) return true;
+        if (strtolower($account['username'] ?? '') === strtolower(DEVELOPER_DEFAULT_USERNAME)) return true;
+        return false;
+    }
+
+    $pdo = getDBConnection();
+    if (!$pdo) return false;
+
+    try {
+        if (is_numeric($account)) {
+            $stmt = $pdo->prepare("SELECT `id`, `username`, `role`, `is_protected`, `system_tag` FROM `admins` WHERE `id` = ? LIMIT 1");
+            $stmt->execute([(int)$account]);
+        } else {
+            $stmt = $pdo->prepare("SELECT `id`, `username`, `role`, `is_protected`, `system_tag` FROM `admins` WHERE LOWER(`username`) = LOWER(?) OR `system_tag` = ? LIMIT 1");
+            $stmt->execute([trim((string)$account), trim((string)$account)]);
+        }
+        $row = $stmt->fetch();
+        if (!$row) return false;
+
+        return ($row['system_tag'] === DEVELOPER_SYSTEM_TAG) ||
+               ((int)$row['is_protected'] === 1) ||
+               ($row['role'] === ROLE_DEVELOPER) ||
+               (strtolower($row['username']) === strtolower(DEVELOPER_DEFAULT_USERNAME));
+    } catch (Throwable $e) {
+        error_log("isProtectedDeveloperAccount error: " . $e->getMessage());
+        return false;
+    }
 }
 
 /**
@@ -421,24 +507,55 @@ function requireAdmin(?string $loginPath = null): array {
 }
 
 /**
- * Require Super Admin role.
+ * Require at least Super Admin clearance (Developer or Super Admin).
  * Rejects standard Admin accounts with HTTP 403 Forbidden.
  *
- * @return array Authenticated super admin record
+ * @return array Authenticated admin record
  */
-function requireSuperAdmin(): array {
+function requireSuperAdminClearance(): array {
     $admin = requireAdmin();
-    if ($admin['role'] !== 'super_admin') {
+    if (!hasSuperAdminClearance($admin)) {
         logAdminAudit(
             (int)$admin['id'],
-            'UNAUTHORIZED_SUPERADMIN_ACCESS_ATTEMPT',
+            'UNAUTHORIZED_GOVERNANCE_ACCESS_ATTEMPT',
             'security',
             $_SERVER['REQUEST_URI'] ?? 'unknown',
-            "Admin '{$admin['username']}' attempted to access restricted Super Admin endpoint"
+            "Admin '{$admin['username']}' attempted to access restricted Governance endpoint"
         );
 
         http_response_code(403);
-        renderForbiddenError("Access Restricted: Super Administrator Privileges Required", "You are signed in as an operational Administrator ('{$admin['username']}'). This endpoint and action require authorized Super Admin role clearance.");
+        renderForbiddenError("Access Restricted: Governance Clearance Required", "You are signed in as an operational Administrator ('{$admin['username']}'). This endpoint and action require authorized Super Admin or Developer role clearance.");
+        exit;
+    }
+    return $admin;
+}
+
+/**
+ * Backwards compatibility wrapper for requireSuperAdminClearance
+ */
+function requireSuperAdmin(): array {
+    return requireSuperAdminClearance();
+}
+
+/**
+ * Require Developer clearance (Charan only).
+ * Rejects Super Admins and standard Admins with HTTP 403 Forbidden.
+ *
+ * @return array Authenticated developer record
+ */
+function requireDeveloperClearance(): array {
+    $admin = requireAdmin();
+    if (!isDeveloper($admin)) {
+        logAdminAudit(
+            (int)$admin['id'],
+            'UNAUTHORIZED_DEVELOPER_ACCESS_ATTEMPT',
+            'security',
+            $_SERVER['REQUEST_URI'] ?? 'unknown',
+            "Admin '{$admin['username']}' attempted to access restricted Developer-only function"
+        );
+
+        http_response_code(403);
+        renderForbiddenError("Access Restricted: Developer Clearance Required", "You are signed in as '{$admin['username']}'. This root action requires system Developer clearance.");
         exit;
     }
     return $admin;
@@ -457,12 +574,27 @@ function hasAdminPermission(string $permission, ?array $admin = null): bool {
     }
     if (!$admin) return false;
 
-    // Super Admin has all administrative privileges
-    if ($admin['role'] === 'super_admin') {
+    // Developer has full, unrestricted access to all system features
+    if (isDeveloper($admin)) {
         return true;
     }
 
-    // Role: admin (Restricted operational permissions)
+    // Super Admin has authorized administrative and governance features
+    if (isSuperAdmin($admin)) {
+        $superAdminForbiddenPermissions = [
+            'manage_developer',
+            'create_super_admin',
+            'delete_super_admin',
+            'demote_super_admin',
+            'promote_to_developer',
+            'delete_developer',
+            'deactivate_developer',
+            'modify_developer_role'
+        ];
+        return !in_array($permission, $superAdminForbiddenPermissions, true);
+    }
+
+    // Role: admin (Restricted operational permissions only)
     $adminAllowedPermissions = [
         'view_customers',
         'update_customer',
@@ -553,12 +685,15 @@ function renderForbiddenError(string $title, string $message): void {
 }
 
 /* ==========================================================================
-   ADMINISTRATOR ACCOUNT MANAGEMENT (SUPER ADMIN PRIVILEGES)
+   ADMINISTRATOR ACCOUNT MANAGEMENT & RBAC ENFORCEMENT
    ========================================================================== */
 
 /**
- * Create a new administrator account (Super Admin only).
- * Default role is 'admin'. Only an existing Super Admin can grant 'super_admin'.
+ * Create a new administrator account.
+ * Permissions:
+ * - Developer: Can create 'admin' and 'super_admin' accounts. Cannot create additional Developer accounts.
+ * - Super Admin: Can create 'admin' accounts ONLY. Cannot create Super Admin or Developer accounts.
+ * - Admin: CANNOT create any administrator accounts.
  *
  * @param array $data ['username', 'email', 'full_name', 'password', 'role']
  * @param int $actingAdminId
@@ -566,27 +701,76 @@ function renderForbiddenError(string $title, string $message): void {
  */
 function createAdminAccount(array $data, int $actingAdminId): array {
     $actingAdmin = getCurrentAdmin();
-    if (!$actingAdmin || $actingAdmin['role'] !== 'super_admin') {
-        return ['success' => false, 'message' => 'Unauthorized: Only Super Administrators can create administrative accounts.'];
+    if (!$actingAdmin) {
+        return ['success' => false, 'message' => 'Unauthorized: Please authenticate to proceed.'];
+    }
+
+    $isDev = isDeveloper($actingAdmin);
+    $isSuper = isSuperAdmin($actingAdmin);
+
+    // Operational Admins cannot create any accounts
+    if (!$isDev && !$isSuper) {
+        logAdminAudit(
+            $actingAdminId,
+            'UNAUTHORIZED_CREATE_ADMIN_ATTEMPT',
+            'security',
+            null,
+            "Standard Admin '{$actingAdmin['username']}' attempted to create an administrator account."
+        );
+        return ['success' => false, 'message' => 'Permission Denied: Standard Admins cannot create administrative accounts.'];
     }
 
     $username = trim($data['username'] ?? '');
     $email    = trim($data['email'] ?? '');
     $fullName = trim($data['full_name'] ?? '');
     $password = $data['password'] ?? '';
-    $role     = trim($data['role'] ?? 'admin');
+    $requestedRole = trim($data['role'] ?? ROLE_ADMIN);
 
     // Validation
     if (empty($username) || strlen($username) < 3 || !preg_match('/^[a-zA-Z0-9_.-]+$/', $username)) {
         return ['success' => false, 'message' => 'Admin ID must be at least 3 characters and contain only letters, numbers, hyphens, and underscores.'];
     }
 
+    if (strtolower($username) === strtolower(DEVELOPER_DEFAULT_USERNAME)) {
+        return ['success' => false, 'message' => "Security Violation: Username '" . DEVELOPER_DEFAULT_USERNAME . "' is permanently reserved for the system Developer."];
+    }
+
     if (empty($password) || strlen($password) < 8) {
         return ['success' => false, 'message' => 'Password must be at least 8 characters long for administrative accounts.'];
     }
 
-    if (!in_array($role, ['admin', 'super_admin'], true)) {
-        $role = 'admin'; // Safe default
+    // Role Enforcement:
+    // 1. Developer role can never be created via form
+    if ($requestedRole === ROLE_DEVELOPER) {
+        logAdminAudit(
+            $actingAdminId,
+            'UNAUTHORIZED_DEVELOPER_CREATION_ATTEMPT',
+            'security',
+            $username,
+            "Admin '{$actingAdmin['username']}' attempted to create a Developer account for '{$username}'."
+        );
+        return ['success' => false, 'message' => 'Security Violation: Cannot create additional Developer accounts. Charan is the permanent system Developer.'];
+    }
+
+    // 2. Super Admin can ONLY create standard Admin accounts
+    if ($isSuper && $requestedRole !== ROLE_ADMIN) {
+        logAdminAudit(
+            $actingAdminId,
+            'UNAUTHORIZED_SUPERADMIN_CREATION_ATTEMPT',
+            'security',
+            $username,
+            "Super Admin '{$actingAdmin['username']}' attempted to create Super Admin account for '{$username}'."
+        );
+        return ['success' => false, 'message' => 'Permission Denied: Super Administrators can only create standard Admin accounts. Only the Developer can create Super Administrators.'];
+    }
+
+    // 3. Developer can create Admin or Super Admin
+    if ($isDev) {
+        if (!in_array($requestedRole, [ROLE_ADMIN, ROLE_SUPER_ADMIN], true)) {
+            $requestedRole = ROLE_ADMIN;
+        }
+    } else {
+        $requestedRole = ROLE_ADMIN;
     }
 
     $pdo = getDBConnection();
@@ -614,15 +798,15 @@ function createAdminAccount(array $data, int $actingAdminId): array {
         $passwordHash = password_hash($password, PASSWORD_DEFAULT);
 
         $stmt = $pdo->prepare("
-            INSERT INTO `admins` (`username`, `email`, `full_name`, `password_hash`, `role`, `is_active`, `created_at`)
-            VALUES (?, ?, ?, ?, ?, 1, NOW())
+            INSERT INTO `admins` (`username`, `email`, `full_name`, `password_hash`, `role`, `is_active`, `is_protected`, `system_tag`, `created_at`)
+            VALUES (?, ?, ?, ?, ?, 1, 0, NULL, NOW())
         ");
         $stmt->execute([
             $username,
             !empty($email) ? $email : null,
             !empty($fullName) ? $fullName : $username,
             $passwordHash,
-            $role
+            $requestedRole
         ]);
 
         $newAdminId = (int)$pdo->lastInsertId();
@@ -632,23 +816,26 @@ function createAdminAccount(array $data, int $actingAdminId): array {
             'ADMIN_ACCOUNT_CREATED',
             'admin',
             (string)$newAdminId,
-            "Created administrator account '{$username}' with role '{$role}'"
+            "Created administrator account '{$username}' with role '{$requestedRole}'"
         );
 
         return [
             'success' => true,
-            'message' => "Administrator account '{$username}' ({$role}) successfully created.",
+            'message' => "Administrator account '{$username}' ({$requestedRole}) successfully created.",
             'admin_id' => $newAdminId
         ];
     } catch (Throwable $e) {
         error_log("Failed to create admin: " . $e->getMessage());
-        return ['success' => false, 'message' => 'A database error occurred while creating the administrator account.'];
+        return ['success' => false, 'message' => 'A database error occurred while creating the administrator account: ' . $e->getMessage()];
     }
 }
 
 /**
  * Activate or Deactivate an administrator account.
- * Guard: Prevents locking out the system's last active Super Admin.
+ * Permissions:
+ * - Developer: Can toggle Super Admin and Admin accounts. Developer account can never be deactivated.
+ * - Super Admin: Can toggle Admin accounts ONLY. Cannot deactivate Developer or other Super Admins. Cannot deactivate self.
+ * - Admin: CANNOT change any account status.
  *
  * @param int $targetAdminId
  * @param int $newStatus 1 for Active, 0 for Deactivated
@@ -657,8 +844,17 @@ function createAdminAccount(array $data, int $actingAdminId): array {
  */
 function updateAdminStatus(int $targetAdminId, int $newStatus, int $actingAdminId): array {
     $actingAdmin = getCurrentAdmin();
-    if (!$actingAdmin || $actingAdmin['role'] !== 'super_admin') {
-        return ['success' => false, 'message' => 'Unauthorized: Only Super Administrators can change account activation status.'];
+    if (!$actingAdmin) {
+        return ['success' => false, 'message' => 'Unauthorized: Please authenticate to proceed.'];
+    }
+
+    $isDev = isDeveloper($actingAdmin);
+    $isSuper = isSuperAdmin($actingAdmin);
+
+    // Standard Admins cannot change account activation status
+    if (!$isDev && !$isSuper) {
+        logAdminAudit($actingAdminId, 'UNAUTHORIZED_STATUS_CHANGE_ATTEMPT', 'security', (string)$targetAdminId, "Standard Admin '{$actingAdmin['username']}' attempted status change");
+        return ['success' => false, 'message' => 'Permission Denied: Standard Admins cannot change administrator account status.'];
     }
 
     $pdo = getDBConnection();
@@ -667,7 +863,7 @@ function updateAdminStatus(int $targetAdminId, int $newStatus, int $actingAdminI
     }
 
     try {
-        $stmt = $pdo->prepare("SELECT `id`, `username`, `role`, `is_active` FROM `admins` WHERE `id` = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT `id`, `username`, `role`, `is_active`, `is_protected`, `system_tag` FROM `admins` WHERE `id` = ? LIMIT 1");
         $stmt->execute([$targetAdminId]);
         $target = $stmt->fetch();
 
@@ -675,16 +871,35 @@ function updateAdminStatus(int $targetAdminId, int $newStatus, int $actingAdminI
             return ['success' => false, 'message' => 'Administrator account not found.'];
         }
 
-        // Prevent deactivating the last active Super Admin
-        if ($newStatus === 0 && $target['role'] === 'super_admin') {
-            $countStmt = $pdo->query("SELECT COUNT(*) FROM `admins` WHERE `role` = 'super_admin' AND `is_active` = 1");
-            $activeSuperCount = (int)$countStmt->fetchColumn();
-            if ($activeSuperCount <= 1) {
-                return ['success' => false, 'message' => 'Action Blocked: Cannot deactivate the platform\'s only active Super Administrator.'];
+        // GUARD 1: Developer account can NEVER be deactivated by anyone
+        if (isProtectedDeveloperAccount($target)) {
+            logAdminAudit(
+                $actingAdminId,
+                'CRITICAL_SECURITY_ALERT_DEVELOPER_DEACTIVATE_BLOCKED',
+                'security',
+                (string)$targetAdminId,
+                "BLOCKED: Attempt by '{$actingAdmin['username']}' to deactivate Developer '{$target['username']}'"
+            );
+            return ['success' => false, 'message' => 'Security Violation: The Developer account is permanent and can NEVER be deactivated.'];
+        }
+
+        // GUARD 2: Super Admin cannot deactivate Super Admin accounts or their own account
+        if ($isSuper) {
+            if ($target['role'] === ROLE_SUPER_ADMIN) {
+                logAdminAudit($actingAdminId, 'UNAUTHORIZED_SUPERADMIN_STATUS_CHANGE', 'security', (string)$targetAdminId, "Super Admin '{$actingAdmin['username']}' attempted to alter Super Admin status for '{$target['username']}'");
+                return ['success' => false, 'message' => 'Permission Denied: Super Administrators cannot deactivate Super Admin accounts.'];
+            }
+            if ($actingAdminId === $targetAdminId) {
+                return ['success' => false, 'message' => 'Permission Denied: You cannot deactivate your own administrative account.'];
             }
         }
 
-        $upd = $pdo->prepare("UPDATE `admins` SET `is_active` = ? WHERE `id` = ?");
+        // GUARD 3: Developer cannot deactivate their own account
+        if ($isDev && $actingAdminId === $targetAdminId && $newStatus === 0) {
+            return ['success' => false, 'message' => 'Security Violation: The system Developer account cannot be deactivated.'];
+        }
+
+        $upd = $pdo->prepare("UPDATE `admins` SET `is_active` = ? WHERE `id` = ? AND `is_protected` = 0");
         $upd->execute([$newStatus ? 1 : 0, $targetAdminId]);
 
         $statusLabel = $newStatus ? 'Active' : 'Deactivated';
@@ -693,7 +908,7 @@ function updateAdminStatus(int $targetAdminId, int $newStatus, int $actingAdminI
             $newStatus ? 'ADMIN_ACCOUNT_ACTIVATED' : 'ADMIN_ACCOUNT_DEACTIVATED',
             'admin',
             (string)$targetAdminId,
-            "Administrator '{$target['username']}' status set to {$statusLabel}"
+            "Administrator '{$target['username']}' ({$target['role']}) status set to {$statusLabel}"
         );
 
         return [
@@ -702,13 +917,16 @@ function updateAdminStatus(int $targetAdminId, int $newStatus, int $actingAdminI
         ];
     } catch (Throwable $e) {
         error_log("updateAdminStatus error: " . $e->getMessage());
-        return ['success' => false, 'message' => 'Failed to update administrator status.'];
+        return ['success' => false, 'message' => 'Failed to update administrator status: ' . $e->getMessage()];
     }
 }
 
 /**
- * Assign or change an administrator's role (Super Admin only).
- * Guard: Prevents demoting the last active Super Admin, and prevents standard Admin from elevating privileges.
+ * Assign or change an administrator's role.
+ * Permissions:
+ * - Developer: Can change roles between 'admin' and 'super_admin'. Developer role cannot be demoted or assigned.
+ * - Super Admin: CANNOT change roles to/from Super Admin or Developer. Cannot modify their own privileges.
+ * - Admin: CANNOT change any user roles.
  *
  * @param int $targetAdminId
  * @param string $newRole 'super_admin' or 'admin'
@@ -717,12 +935,17 @@ function updateAdminStatus(int $targetAdminId, int $newStatus, int $actingAdminI
  */
 function updateAdminRole(int $targetAdminId, string $newRole, int $actingAdminId): array {
     $actingAdmin = getCurrentAdmin();
-    if (!$actingAdmin || $actingAdmin['role'] !== 'super_admin') {
-        return ['success' => false, 'message' => 'Unauthorized: Only Super Administrators can assign or change roles.'];
+    if (!$actingAdmin) {
+        return ['success' => false, 'message' => 'Unauthorized: Please authenticate to proceed.'];
     }
 
-    if (!in_array($newRole, ['super_admin', 'admin'], true)) {
-        return ['success' => false, 'message' => 'Invalid role specified. Supported roles: super_admin, admin.'];
+    $isDev = isDeveloper($actingAdmin);
+    $isSuper = isSuperAdmin($actingAdmin);
+
+    // Standard Admins cannot change roles
+    if (!$isDev && !$isSuper) {
+        logAdminAudit($actingAdminId, 'UNAUTHORIZED_ROLE_CHANGE_ATTEMPT', 'security', (string)$targetAdminId, "Standard Admin '{$actingAdmin['username']}' attempted role change");
+        return ['success' => false, 'message' => 'Permission Denied: Standard Admins cannot modify user roles.'];
     }
 
     $pdo = getDBConnection();
@@ -731,7 +954,7 @@ function updateAdminRole(int $targetAdminId, string $newRole, int $actingAdminId
     }
 
     try {
-        $stmt = $pdo->prepare("SELECT `id`, `username`, `role`, `is_active` FROM `admins` WHERE `id` = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT `id`, `username`, `role`, `is_active`, `is_protected`, `system_tag` FROM `admins` WHERE `id` = ? LIMIT 1");
         $stmt->execute([$targetAdminId]);
         $target = $stmt->fetch();
 
@@ -739,16 +962,56 @@ function updateAdminRole(int $targetAdminId, string $newRole, int $actingAdminId
             return ['success' => false, 'message' => 'Administrator account not found.'];
         }
 
-        // Prevent demoting the last active Super Admin
-        if ($target['role'] === 'super_admin' && $newRole === 'admin') {
-            $countStmt = $pdo->query("SELECT COUNT(*) FROM `admins` WHERE `role` = 'super_admin' AND `is_active` = 1");
-            $activeSuperCount = (int)$countStmt->fetchColumn();
-            if ($activeSuperCount <= 1) {
-                return ['success' => false, 'message' => 'Action Blocked: Cannot demote the platform\'s last active Super Administrator.'];
+        // GUARD 1: Developer account role can NEVER be modified, demoted, or transferred by anyone
+        if (isProtectedDeveloperAccount($target)) {
+            logAdminAudit(
+                $actingAdminId,
+                'CRITICAL_SECURITY_ALERT_DEVELOPER_ROLE_ALTER_BLOCKED',
+                'security',
+                (string)$targetAdminId,
+                "BLOCKED: Attempt by '{$actingAdmin['username']}' to alter Developer '{$target['username']}' role"
+            );
+            return ['success' => false, 'message' => 'Security Violation: The Developer role is immutable and can NEVER be modified, transferred, or demoted.'];
+        }
+
+        // GUARD 2: No account can ever be elevated or assigned the Developer role
+        if ($newRole === ROLE_DEVELOPER) {
+            logAdminAudit(
+                $actingAdminId,
+                'UNAUTHORIZED_DEVELOPER_PROMOTION_ATTEMPT',
+                'security',
+                (string)$targetAdminId,
+                "Attempt by '{$actingAdmin['username']}' to promote '{$target['username']}' to Developer was blocked"
+            );
+            return ['success' => false, 'message' => 'Security Violation: Developer privileges cannot be assigned or transferred. Charan is the permanent system Developer.'];
+        }
+
+        // GUARD 3: Super Admin cannot modify Super Admin accounts, cannot promote to Super Admin, and cannot modify their own privileges
+        if ($isSuper) {
+            if ($target['role'] === ROLE_SUPER_ADMIN) {
+                logAdminAudit($actingAdminId, 'UNAUTHORIZED_SUPERADMIN_ROLE_CHANGE', 'security', (string)$targetAdminId, "Super Admin '{$actingAdmin['username']}' attempted to modify Super Admin '{$target['username']}'");
+                return ['success' => false, 'message' => 'Permission Denied: Super Administrators cannot modify Super Admin privileges or demote Super Admins.'];
+            }
+            if ($newRole === ROLE_SUPER_ADMIN) {
+                logAdminAudit($actingAdminId, 'UNAUTHORIZED_SUPERADMIN_PROMOTION', 'security', (string)$targetAdminId, "Super Admin '{$actingAdmin['username']}' attempted to promote '{$target['username']}' to Super Admin");
+                return ['success' => false, 'message' => 'Permission Denied: Only the Developer can promote an account to Super Administrator.'];
+            }
+            if ($actingAdminId === $targetAdminId) {
+                return ['success' => false, 'message' => 'Permission Denied: You cannot modify your own administrative privileges.'];
             }
         }
 
-        $upd = $pdo->prepare("UPDATE `admins` SET `role` = ? WHERE `id` = ?");
+        // Valid roles for assignment
+        if (!in_array($newRole, [ROLE_ADMIN, ROLE_SUPER_ADMIN], true)) {
+            return ['success' => false, 'message' => 'Invalid role specified. Supported roles: admin, super_admin.'];
+        }
+
+        // Only Developer can change roles to/from Super Admin
+        if ($newRole === ROLE_SUPER_ADMIN && !$isDev) {
+            return ['success' => false, 'message' => 'Permission Denied: Only the Developer can grant Super Administrator role.'];
+        }
+
+        $upd = $pdo->prepare("UPDATE `admins` SET `role` = ? WHERE `id` = ? AND `is_protected` = 0");
         $upd->execute([$newRole, $targetAdminId]);
 
         logAdminAudit(
@@ -761,16 +1024,139 @@ function updateAdminRole(int $targetAdminId, string $newRole, int $actingAdminId
 
         return [
             'success' => true,
-            'message' => "Role for '{$target['username']}' updated to {$newRole}."
+            'message' => "Role for '{$target['username']}' successfully updated to {$newRole}."
         ];
     } catch (Throwable $e) {
         error_log("updateAdminRole error: " . $e->getMessage());
-        return ['success' => false, 'message' => 'Failed to update administrator role.'];
+        return ['success' => false, 'message' => 'Failed to update administrator role: ' . $e->getMessage()];
     }
 }
 
 /**
- * Reset an administrator password through a secure, authorized process (Super Admin only).
+ * Permanently remove / delete an administrator account subject to strict RBAC rules.
+ *
+ * Rules:
+ * - Developer account can NEVER be deleted by ANYONE (Developer, Super Admin, Admin).
+ * - Developer can remove Super Admin and Admin accounts.
+ * - Super Admin can remove Admin accounts ONLY. Cannot remove Developer or Super Admin accounts.
+ * - Admin CANNOT remove any administrator accounts.
+ * - Nobody can delete their own active session account.
+ *
+ * @param int $targetAdminId
+ * @param int $actingAdminId
+ * @return array ['success' => bool, 'message' => string]
+ */
+function deleteAdminAccount(int $targetAdminId, int $actingAdminId): array {
+    $actingAdmin = getCurrentAdmin();
+    if (!$actingAdmin) {
+        return ['success' => false, 'message' => 'Unauthorized: Please authenticate to proceed.'];
+    }
+
+    $isDev = isDeveloper($actingAdmin);
+    $isSuper = isSuperAdmin($actingAdmin);
+
+    // Standard Admins cannot delete accounts
+    if (!$isDev && !$isSuper) {
+        logAdminAudit(
+            $actingAdminId,
+            'UNAUTHORIZED_ADMIN_DELETE_ATTEMPT',
+            'security',
+            (string)$targetAdminId,
+            "Standard Admin '{$actingAdmin['username']}' attempted to delete admin ID #{$targetAdminId}"
+        );
+        return ['success' => false, 'message' => 'Permission Denied: Standard Admins cannot remove administrative accounts.'];
+    }
+
+    $pdo = getDBConnection();
+    if (!$pdo) {
+        return ['success' => false, 'message' => 'Database connection failed.'];
+    }
+
+    try {
+        $stmt = $pdo->prepare("SELECT `id`, `username`, `role`, `is_protected`, `system_tag` FROM `admins` WHERE `id` = ? LIMIT 1");
+        $stmt->execute([$targetAdminId]);
+        $target = $stmt->fetch();
+
+        if (!$target) {
+            return ['success' => false, 'message' => 'Administrator account not found.'];
+        }
+
+        // RULE 1: Developer account must NEVER be deleted by anyone!
+        if (isProtectedDeveloperAccount($target)) {
+            logAdminAudit(
+                $actingAdminId,
+                'CRITICAL_SECURITY_ALERT_DEVELOPER_DELETION_BLOCKED',
+                'security',
+                (string)$targetAdminId,
+                "SECURITY ALERT: Blocked attempt by '{$actingAdmin['username']}' to delete Developer account '{$target['username']}'"
+            );
+            return ['success' => false, 'message' => 'Security Violation: The Developer account is permanent and can NEVER be deleted, removed, or purged.'];
+        }
+
+        // Prevent deleting currently logged-in account
+        if ($actingAdminId === $targetAdminId) {
+            return ['success' => false, 'message' => 'Action Blocked: You cannot delete your own currently active account.'];
+        }
+
+        // RULE 2: Super Admin can ONLY remove standard Admin accounts
+        if ($isSuper) {
+            if ($target['role'] === ROLE_SUPER_ADMIN) {
+                logAdminAudit(
+                    $actingAdminId,
+                    'UNAUTHORIZED_SUPERADMIN_DELETION_ATTEMPT',
+                    'security',
+                    (string)$targetAdminId,
+                    "Super Admin '{$actingAdmin['username']}' attempted to delete Super Admin '{$target['username']}'"
+                );
+                return ['success' => false, 'message' => 'Permission Denied: Super Administrators cannot remove Super Admin accounts. Only the Developer can remove Super Admins.'];
+            }
+            if ($target['role'] !== ROLE_ADMIN) {
+                return ['success' => false, 'message' => 'Permission Denied: Super Administrators may only remove standard Admin accounts.'];
+            }
+        }
+
+        // RULE 3: Developer can remove Super Admin and Admin accounts
+        if ($isDev) {
+            if (!in_array($target['role'], [ROLE_ADMIN, ROLE_SUPER_ADMIN], true)) {
+                return ['success' => false, 'message' => 'Permission Denied: Unsupported target account role.'];
+            }
+        }
+
+        // Execute deletion within transaction
+        $pdo->beginTransaction();
+
+        $del = $pdo->prepare("DELETE FROM `admins` WHERE `id` = ? AND `is_protected` = 0");
+        $del->execute([$targetAdminId]);
+
+        $pdo->commit();
+
+        logAdminAudit(
+            $actingAdminId,
+            'ADMIN_ACCOUNT_REMOVED',
+            'admin',
+            (string)$targetAdminId,
+            "Administrator '{$target['username']}' ({$target['role']}) permanently removed by '{$actingAdmin['username']}' ({$actingAdmin['role']})"
+        );
+
+        return [
+            'success' => true,
+            'message' => "Administrator account '{$target['username']}' ({$target['role']}) has been successfully removed."
+        ];
+    } catch (Throwable $e) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log("deleteAdminAccount error: " . $e->getMessage());
+        return ['success' => false, 'message' => 'Failed to remove administrator account: ' . $e->getMessage()];
+    }
+}
+
+/**
+ * Reset an administrator password through a secure, authorized process.
+ * Permissions:
+ * - Developer: Can reset Super Admin and Admin passwords. Can reset own password.
+ * - Super Admin: Can reset Admin passwords and own password. Cannot reset Developer or other Super Admin passwords.
+ * - Admin: CANNOT reset other administrator passwords.
  *
  * @param int $targetAdminId
  * @param string $newPassword
@@ -779,8 +1165,17 @@ function updateAdminRole(int $targetAdminId, string $newRole, int $actingAdminId
  */
 function resetAdminPassword(int $targetAdminId, string $newPassword, int $actingAdminId): array {
     $actingAdmin = getCurrentAdmin();
-    if (!$actingAdmin || $actingAdmin['role'] !== 'super_admin') {
-        return ['success' => false, 'message' => 'Unauthorized: Only Super Administrators can reset passwords.'];
+    if (!$actingAdmin) {
+        return ['success' => false, 'message' => 'Unauthorized: Please authenticate to proceed.'];
+    }
+
+    $isDev = isDeveloper($actingAdmin);
+    $isSuper = isSuperAdmin($actingAdmin);
+
+    // Standard Admins cannot reset other passwords
+    if (!$isDev && !$isSuper && $actingAdminId !== $targetAdminId) {
+        logAdminAudit($actingAdminId, 'UNAUTHORIZED_PASSWORD_RESET_ATTEMPT', 'security', (string)$targetAdminId, "Standard Admin '{$actingAdmin['username']}' attempted password reset");
+        return ['success' => false, 'message' => 'Permission Denied: Standard Admins cannot reset passwords.'];
     }
 
     if (empty($newPassword) || strlen($newPassword) < 8) {
@@ -793,12 +1188,37 @@ function resetAdminPassword(int $targetAdminId, string $newPassword, int $acting
     }
 
     try {
-        $stmt = $pdo->prepare("SELECT `username` FROM `admins` WHERE `id` = ? LIMIT 1");
+        $stmt = $pdo->prepare("SELECT `id`, `username`, `role`, `is_protected`, `system_tag` FROM `admins` WHERE `id` = ? LIMIT 1");
         $stmt->execute([$targetAdminId]);
-        $username = $stmt->fetchColumn();
+        $target = $stmt->fetch();
 
-        if (!$username) {
+        if (!$target) {
             return ['success' => false, 'message' => 'Administrator account not found.'];
+        }
+
+        // Target is Developer: ONLY Developer themselves can change their own credentials
+        if (isProtectedDeveloperAccount($target)) {
+            if ($actingAdminId !== (int)$target['id']) {
+                logAdminAudit(
+                    $actingAdminId,
+                    'CRITICAL_SECURITY_ALERT_DEVELOPER_PASSWORD_RESET_BLOCKED',
+                    'security',
+                    (string)$targetAdminId,
+                    "BLOCKED: User '{$actingAdmin['username']}' attempted unauthorized password reset on Developer account"
+                );
+                return ['success' => false, 'message' => 'Security Violation: Only the Developer can update the Developer account credentials.'];
+            }
+        }
+
+        // Super Admin cannot reset Developer or other Super Admin passwords
+        if ($isSuper) {
+            if ($target['role'] === ROLE_SUPER_ADMIN && $actingAdminId !== $targetAdminId) {
+                logAdminAudit($actingAdminId, 'UNAUTHORIZED_SUPERADMIN_PASSWORD_RESET', 'security', (string)$targetAdminId, "Super Admin '{$actingAdmin['username']}' attempted to reset password of Super Admin '{$target['username']}'");
+                return ['success' => false, 'message' => 'Permission Denied: Super Administrators cannot reset another Super Administrator\'s password.'];
+            }
+            if ($target['role'] !== ROLE_ADMIN && $actingAdminId !== $targetAdminId) {
+                return ['success' => false, 'message' => 'Permission Denied: Super Administrators may only reset standard Admin passwords.'];
+            }
         }
 
         $hash = password_hash($newPassword, PASSWORD_DEFAULT);
@@ -810,16 +1230,16 @@ function resetAdminPassword(int $targetAdminId, string $newPassword, int $acting
             'ADMIN_PASSWORD_RESET',
             'admin',
             (string)$targetAdminId,
-            "Password securely reset for administrator '{$username}'"
+            "Password securely reset for administrator '{$target['username']}' by '{$actingAdmin['username']}'"
         );
 
         return [
             'success' => true,
-            'message' => "Password for '{$username}' has been successfully reset."
+            'message' => "Password for '{$target['username']}' has been successfully reset."
         ];
     } catch (Throwable $e) {
         error_log("resetAdminPassword error: " . $e->getMessage());
-        return ['success' => false, 'message' => 'Failed to reset password.'];
+        return ['success' => false, 'message' => 'Failed to reset password: ' . $e->getMessage()];
     }
 }
 
