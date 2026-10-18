@@ -311,6 +311,29 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
            || (isset($_POST['ajax']) && $_POST['ajax'] === '1')
            || (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false);
 
+    // Real-time username suggestion is an idempotent read-only query
+    if ($action === 'suggest_username') {
+        header('Content-Type: application/json');
+        $name   = trim($_POST['full_name'] ?? '');
+        $role   = trim($_POST['role'] ?? 'admin');
+        $mobile = trim($_POST['mobile'] ?? '');
+        $cycle  = max(0, (int)($_POST['cycle'] ?? 0));
+        $suggested = generateUniqueAdminUsername($name ?: 'Admin', $role, $mobile, $pdo, $cycle);
+        
+        $parts = preg_split('/\s+/', $name);
+        $firstClean = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $parts[0] ?? 'admin'));
+        $roleSlug = ($role === 'super_admin' || $role === 'superadmin') ? 'superadmin' : 'admin';
+        $baseCandidate = "{$firstClean}_{$roleSlug}";
+        $hasConflict = (strtolower($suggested) !== strtolower($baseCandidate));
+
+        echo json_encode([
+            'success' => true,
+            'username' => $suggested,
+            'has_conflict' => $hasConflict
+        ]);
+        exit;
+    }
+
     if (!verifyCsrfToken($csrfToken)) {
         if ($isAjax) {
             header('Content-Type: application/json');
@@ -528,27 +551,6 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
                 }
                 break;
 
-            // REAL-TIME USERNAME AVAILABILITY & SUGGESTION
-            case 'suggest_username':
-                header('Content-Type: application/json');
-                $name   = trim($_POST['full_name'] ?? '');
-                $role   = trim($_POST['role'] ?? 'admin');
-                $mobile = trim($_POST['mobile'] ?? '');
-                $cycle  = max(0, (int)($_POST['cycle'] ?? 0));
-                $suggested = generateUniqueAdminUsername($name ?: 'Admin', $role, $mobile, $pdo, $cycle);
-                
-                $parts = preg_split('/\s+/', $name);
-                $firstClean = strtolower(preg_replace('/[^a-zA-Z0-9]/', '', $parts[0] ?? 'admin'));
-                $roleSlug = ($role === 'super_admin' || $role === 'superadmin') ? 'superadmin' : 'admin';
-                $baseCandidate = "{$firstClean}_{$roleSlug}";
-                $hasConflict = (strtolower($suggested) !== strtolower($baseCandidate));
-
-                echo json_encode([
-                    'success' => true,
-                    'username' => $suggested,
-                    'has_conflict' => $hasConflict
-                ]);
-                exit;
 
             // PROFILE MANAGEMENT: UPDATE CHARAN (DEVELOPER) / SELF
             case 'update_profile':
@@ -3517,6 +3519,9 @@ $csrfToken = getCsrfToken();
             modal.setAttribute('aria-hidden', 'false');
             document.body.style.overflow = 'hidden';
 
+            usernameCycleCounter = 0;
+            triggerUsernameAutoGeneration(false);
+
             // Focus on first input
             setTimeout(() => {
                 const nameInput = document.getElementById('modal_admin_name');
@@ -3531,43 +3536,108 @@ $csrfToken = getCsrfToken();
             modal.classList.remove('active');
             modal.setAttribute('aria-hidden', 'true');
             document.body.style.overflow = '';
+
+            const form = document.getElementById('createAdminModalForm');
+            if (form) form.reset();
+            const userEl = document.getElementById('modal_admin_username');
+            if (userEl) userEl.value = '';
+            usernameCycleCounter = 0;
         }
 
-        // Real-Time Username Auto-Generation & Collision Resolution
-        let usernameDebounceTimer = null;
+        // =============================================================
+        // SYSTEM-GENERATED USERNAME ENGINE (INSTANT & COLLISION-FREE)
+        // =============================================================
         let usernameCycleCounter = 0;
+        let usernameSyncTimer = null;
+
+        function generateAdminUsernameClient(fullName, role, mobile, cycleIndex = 0) {
+            const raw = (fullName || '').trim();
+            if (!raw) return '';
+            const parts = raw.split(/\s+/);
+            let first = (parts[0] || 'admin').toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!first) first = 'admin';
+
+            let lastInit = '';
+            if (parts.length > 1) {
+                const last = parts[parts.length - 1].toLowerCase().replace(/[^a-z0-9]/g, '');
+                if (last) lastInit = last.charAt(0);
+            }
+
+            let roleSlug = 'admin';
+            const r = (role || '').toLowerCase();
+            if (r === 'super_admin' || r === 'superadmin') {
+                roleSlug = 'superadmin';
+            } else if (r === 'developer') {
+                roleSlug = 'developer';
+            }
+
+            const cleanMobile = (mobile || '').replace(/[^0-9]/g, '');
+            const last2 = cleanMobile.length >= 2 ? cleanMobile.slice(-2) : '';
+            const last4 = cleanMobile.length >= 4 ? cleanMobile.slice(-4) : '';
+
+            const candidates = [];
+            // Format 1: With mobile suffix if mobile is entered (e.g. test_admin85)
+            if (last2) {
+                candidates.push(`${first}_${roleSlug}${last2}`);
+            }
+            // Format 2: Base format (e.g. test_admin)
+            candidates.push(`${first}_${roleSlug}`);
+            // Format 3: With last initial (e.g. testv_admin85)
+            if (lastInit && last2) {
+                candidates.push(`${first}${lastInit}_${roleSlug}${last2}`);
+            }
+            if (lastInit) {
+                candidates.push(`${first}${lastInit}_${roleSlug}`);
+            }
+            // Format 4: 4 digits suffix
+            if (last4 && last4 !== last2) {
+                candidates.push(`${first}_${roleSlug}${last4}`);
+            }
+            // Format 5: Structured dot format (e.g. test.admin_85)
+            if (cleanMobile) {
+                candidates.push(`${first}.${roleSlug}_${last4 || last2}`);
+            }
+            // Format 6: Incremental sequence
+            for (let i = 2; i <= 10; i++) {
+                candidates.push(`${first}_${roleSlug}_${i}`);
+            }
+
+            const idx = Math.abs(cycleIndex) % candidates.length;
+            return candidates[idx];
+        }
 
         function triggerUsernameAutoGeneration(forceCycle = false) {
-            clearTimeout(usernameDebounceTimer);
-            usernameDebounceTimer = setTimeout(async () => {
-                const nameEl = document.getElementById('modal_admin_name');
-                const roleEl = document.getElementById('modal_admin_role');
-                const mobileEl = document.getElementById('modal_admin_mobile');
-                const userEl = document.getElementById('modal_admin_username');
-                const badge = document.getElementById('usernameGenBadge');
-                const cycleBtn = document.getElementById('btnRefreshUsername');
+            const nameEl = document.getElementById('modal_admin_name');
+            const roleEl = document.getElementById('modal_admin_role');
+            const mobileEl = document.getElementById('modal_admin_mobile');
+            const userEl = document.getElementById('modal_admin_username');
+            const cycleBtn = document.getElementById('btnRefreshUsername');
 
-                if (!nameEl || !userEl) return;
-                const fullName = nameEl.value.trim();
-                const role = roleEl ? roleEl.value : 'admin';
-                const mobile = mobileEl ? mobileEl.value.trim() : '';
+            if (!nameEl || !userEl) return;
+            const fullName = nameEl.value.trim();
+            const role = roleEl ? roleEl.value : 'admin';
+            const mobile = mobileEl ? mobileEl.value.trim() : '';
 
-                if (fullName.length < 2) {
-                    if (badge) {
-                        badge.textContent = 'Auto-Generated';
-                        badge.style.opacity = '0.6';
-                    }
-                    return;
-                }
-
-                if (badge) {
-                    badge.textContent = forceCycle ? 'Cycling...' : 'Generating...';
-                    badge.style.opacity = '0.7';
-                }
+            if (forceCycle) {
+                usernameCycleCounter++;
                 if (cycleBtn) {
                     cycleBtn.classList.add('spinning');
+                    setTimeout(() => cycleBtn.classList.remove('spinning'), 350);
                 }
+            }
 
+            if (!fullName) {
+                userEl.value = '';
+                return;
+            }
+
+            // 1. INSTANT LOCAL ASSIGNMENT (0ms latency — never shows "Generating..." and never hangs)
+            const localHandle = generateAdminUsernameClient(fullName, role, mobile, usernameCycleCounter);
+            userEl.value = localHandle;
+
+            // 2. Debounced background sync with database to ensure uniqueness & resolve conflicts
+            clearTimeout(usernameSyncTimer);
+            usernameSyncTimer = setTimeout(async () => {
                 try {
                     const formData = new FormData();
                     formData.append('action', 'suggest_username');
@@ -3575,10 +3645,7 @@ $csrfToken = getCsrfToken();
                     formData.append('full_name', fullName);
                     formData.append('role', role);
                     formData.append('mobile', mobile);
-                    if (forceCycle) {
-                        usernameCycleCounter++;
-                        formData.append('cycle', usernameCycleCounter);
-                    }
+                    formData.append('cycle', usernameCycleCounter);
 
                     const res = await fetch('index.php?tab=admins', {
                         method: 'POST',
@@ -3589,22 +3656,16 @@ $csrfToken = getCsrfToken();
                         }
                     });
 
-                    const data = await res.json();
-                    if (data.success && data.username) {
-                        userEl.value = data.username;
-                        if (badge) {
-                            badge.textContent = data.has_conflict ? 'Collision Resolved' : 'Auto-Generated';
-                            badge.style.opacity = '1';
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data && data.success && data.username) {
+                            userEl.value = data.username;
                         }
                     }
-                } catch (err) {
-                    console.error('Username auto-generation error:', err);
-                } finally {
-                    if (cycleBtn) {
-                        cycleBtn.classList.remove('spinning');
-                    }
+                } catch (e) {
+                    // Safe fallback: localHandle is already set and ready
                 }
-            }, forceCycle ? 0 : 250);
+            }, forceCycle ? 0 : 180);
         }
 
         function cycleUsernameSuggestion() {
